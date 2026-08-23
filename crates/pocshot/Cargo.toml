@@ -1,0 +1,19 @@
+[package]
+name = "pocshot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "pocshot"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+image.workspace = true
+log.workspace = true
+pocshot-core = { path = "../pocshot-core" }
+pocshot-gui = { path = "../pocshot-gui" }
+pocshot-ocr = { path = "../pocshot-ocr" }
+serde_json.workspace = true

@@ -1,0 +1,49 @@
+# ===== Cargo / Rust =====
+/target
+**/target/
+# Cargo template leftover (compiled executables)
+debug
+# rustfmt / IDE backups
+**/*.rs.bk
+*.pdb
+# rustc crash dumps
+rustc-ice-*.txt
+# cargo mutants test output
+**/mutants.out*/
+
+
+# ===== Runtime output written into the working directory =====
+# Saved screenshots / annotated exports (default_output_path)
+pocshot-*.png
+# Snap-line debug overlay (written by pocshot-snap debugging)
+snap_debug.png
+
+
+# ===== Downloaded OCR models (first-run cache) =====
+# Kept out of the repo; auto-fetched via pocshot_ocr::models on demand.
+**/models/text-detection.rten
+**/models/text-recognition.rten
+
+
+# ===== Local tool state (not part of the repo) =====
+# GrayMatter vector-store (agent memory)
+.graymatter/
+# OpenCode plugin deps (its own .gitignore also covers these)
+.opencode/node_modules/
+
+
+# ===== Editor / IDE =====
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+# ===== Editor scratch / OS cruft =====
+*~
+*.swp
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+
+# ===== Logs =====
+*.log

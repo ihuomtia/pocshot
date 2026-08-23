@@ -1,0 +1,14 @@
+[package]
+name = "pocshot-ocr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+image.workspace = true
+log.workspace = true
+ocrs.workspace = true
+rten.workspace = true
+rten-imageproc.workspace = true
+ureq.workspace = true
