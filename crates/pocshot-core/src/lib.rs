@@ -1,11 +1,13 @@
 pub mod capture;
 pub mod error;
 pub mod notification;
+pub mod platform;
 pub mod save;
 pub mod types;
 
 pub use error::{PocshotError, Result};
 pub use notification::send_notification;
+pub use platform::{config_dir, models_dir};
 pub use types::{
     CaptureMode, CaptureOptions, CaptureResult, MonitorInfo, OutputFormat, WindowInfo,
 };

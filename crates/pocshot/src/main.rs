@@ -213,15 +213,11 @@ fn required<T>(value: Option<T>, name: &str) -> anyhow::Result<T> {
     value.with_context(|| format!("{name} is required for this capture mode"))
 }
 
-/// Default directory for the ocrs `.rten` models, mirroring the GUI:
-/// `$XDG_CONFIG_HOME/pocshot/models` (falling back to `~/.config`).
+/// Default directory for the ocrs `.rten` models, resolved by
+/// `pocshot_core::platform` (APPDATA on Windows, `~/Library/Application
+/// Support` on macOS, XDG on Linux).
 fn default_models_dir() -> PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("pocshot")
-        .join("models")
+    pocshot_core::config_dir().join("models")
 }
 
 /// `pocshot debug ocr <image>` — run the ocrs detection + recognition pipeline

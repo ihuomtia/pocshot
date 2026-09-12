@@ -5,6 +5,10 @@
 //! back to `~/.config`) so the machine-level "on/off" knobs for excess
 //! features (OCR, snap display) survive restarts without a second settings
 //! store or a config framework.
+//!
+//! The actual directory is resolved by `pocshot_core::config_dir`, which
+//! follows the platform convention (APPDATA on Windows, `~/Library/Application
+//! Support` on macOS, XDG on Linux).
 
 use crate::theme::Theme;
 use serde::{Deserialize, Serialize};
@@ -53,11 +57,7 @@ impl Default for AppSettings {
 
 /// Directory used for config and (optionally) the bundled model file.
 pub fn config_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.join("pocshot")
+    pocshot_core::config_dir()
 }
 
 fn config_path() -> PathBuf {
@@ -67,12 +67,7 @@ fn config_path() -> PathBuf {
 /// Resolve the OCR models directory: an explicit override first, otherwise the
 /// conventional `$CONFIG_DIR/models` location (models auto-download there).
 pub fn ocr_models_dir(configured: &str) -> PathBuf {
-    let c = configured.trim();
-    if c.is_empty() {
-        config_dir().join("models")
-    } else {
-        PathBuf::from(c)
-    }
+    pocshot_core::models_dir(Some(configured))
 }
 
 /// Load persisted settings, falling back to defaults when the file is missing
@@ -146,15 +141,40 @@ mod tests {
     // Env vars are process-global; serialize env-mutating tests.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+    // Point the platform's config-dir env var at `dir` so the tests never touch
+    // the developer's real config.
     fn with_tmp_config(dir: &std::path::Path, f: impl FnOnce()) {
         let _guard = ENV_LOCK.lock().unwrap();
-        let prev = std::env::var_os("XDG_CONFIG_HOME");
-        unsafe { std::env::set_var("XDG_CONFIG_HOME", dir) };
+        let (key, prev) = set_config_env(dir);
         f();
         match prev {
-            Some(p) => unsafe { std::env::set_var("XDG_CONFIG_HOME", p) },
-            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
+            Some(p) => unsafe { std::env::set_var(&key, p) },
+            None => unsafe { std::env::remove_var(&key) },
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn set_config_env(dir: &std::path::Path) -> (String, Option<std::ffi::OsString>) {
+        let key = "APPDATA".to_string();
+        let prev = std::env::var_os(&key);
+        unsafe { std::env::set_var(&key, dir) };
+        (key, prev)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn set_config_env(dir: &std::path::Path) -> (String, Option<std::ffi::OsString>) {
+        let key = "XDG_CONFIG_HOME".to_string();
+        let prev = std::env::var_os(&key);
+        unsafe { std::env::set_var(&key, dir) };
+        (key, prev)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn set_config_env(dir: &std::path::Path) -> (String, Option<std::ffi::OsString>) {
+        let key = "HOME".to_string();
+        let prev = std::env::var_os(&key);
+        unsafe { std::env::set_var(&key, dir) };
+        (key, prev)
     }
 
     #[test]
@@ -165,7 +185,10 @@ mod tests {
             s.ocr_enabled = true;
             s.show_text_boxes = true;
             s.ocr_confidence = 0.7;
-            s.ocr_models_dir = "/tmp/models".into();
+            s.ocr_models_dir = std::env::temp_dir()
+                .join("models")
+                .to_string_lossy()
+                .into_owned();
             s.snap_enabled = false;
             save(&s);
 
@@ -199,7 +222,11 @@ mod tests {
     fn models_dir_resolution() {
         let dir = std::env::temp_dir().join(format!("pocshot-cfg-path-{}", std::process::id()));
         with_tmp_config(&dir, || {
-            assert_eq!(ocr_models_dir("/x/models"), PathBuf::from("/x/models"));
+            let over = std::env::temp_dir()
+                .join("custom-models")
+                .to_string_lossy()
+                .into_owned();
+            assert_eq!(ocr_models_dir(&over), PathBuf::from(&over));
             assert_eq!(ocr_models_dir(""), config_dir().join("models"));
         });
     }

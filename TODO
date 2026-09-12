@@ -1,0 +1,15 @@
+add two appraochs to detect regions in the screen
+
+- os level, by getting windows and parts of windows
+- opencv: by detecting edges
+
+use os level appraoch to detect windows, then use opencv to detect internal panels
+
+features
+- automatic note taking
+- context aware screenshots
+
+### issues
+- when text detection it adds some snapping lines which is not correct
+- i need to add a method to select/highlight a text or put it around a border
+- in windows it takes too long to start, and opens a terminal window
