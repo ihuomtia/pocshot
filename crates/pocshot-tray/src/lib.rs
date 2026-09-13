@@ -20,6 +20,7 @@ use tray_menu::{
 const TOOLTIP: &str = "Pocshot — click to take a screenshot";
 const ICON_SIZE: u32 = 64;
 const MENU_SCREENSHOT: &str = "screenshot";
+const MENU_EDIT: &str = "edit";
 const MENU_EXIT: &str = "exit";
 
 /// Run the tray daemon until the user chooses "Exit".
@@ -40,7 +41,7 @@ pub fn run() -> Result<()> {
                     button: MouseButton::Left,
                     button_state: MouseButtonState::Up,
                     ..
-                } => spawn_gui(),
+                } => spawn("gui"),
                 TrayIconEvent::Click {
                     button: MouseButton::Right,
                     button_state: MouseButtonState::Up,
@@ -51,6 +52,11 @@ pub fn run() -> Result<()> {
                     // no state to sync with the backend.
                     let mut menu = PopupMenu::new();
                     menu.add(&TextEntry::of(MENU_SCREENSHOT, "Take screenshot"));
+                    // Only offer clipboard editing when the clipboard actually
+                    // holds an image; the menu is rebuilt on every open.
+                    if pocshot_core::clipboard_has_image() {
+                        menu.add(&TextEntry::of(MENU_EDIT, "Edit clipboard image"));
+                    }
                     menu.add(&Divider);
                     menu.add(&TextEntry::of(MENU_EXIT, "Exit"));
 
@@ -59,7 +65,8 @@ pub fn run() -> Result<()> {
                             log::info!("pocshot tray exiting");
                             break;
                         }
-                        Some(id) if id.0 == MENU_SCREENSHOT => spawn_gui(),
+                        Some(id) if id.0 == MENU_SCREENSHOT => spawn("gui"),
+                        Some(id) if id.0 == MENU_EDIT => spawn("edit"),
                         _ => {}
                     }
                 }
@@ -76,9 +83,9 @@ pub fn run() -> Result<()> {
     anyhow::bail!("the tray is only supported on Windows and Linux")
 }
 
-/// Launch a detached GUI process (`pocshot gui`).
+/// Launch a detached process for the given subcommand (`gui`, `edit`, …).
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-fn spawn_gui() {
+fn spawn(action: &str) {
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
         Err(e) => {
@@ -87,12 +94,12 @@ fn spawn_gui() {
         }
     };
     let mut cmd = std::process::Command::new(exe);
-    cmd.arg("gui");
+    cmd.arg(action);
     pocshot_core::quiet_io(&mut cmd);
     pocshot_core::detach(&mut cmd);
     match cmd.spawn() {
-        Ok(_) => log::info!("launched screenshot GUI"),
-        Err(e) => log::error!("failed to launch GUI: {e}"),
+        Ok(_) => log::info!("launched {action} GUI"),
+        Err(e) => log::error!("failed to launch {action} GUI: {e}"),
     }
 }
 

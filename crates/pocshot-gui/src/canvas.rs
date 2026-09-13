@@ -8,6 +8,17 @@ pub fn fit_rect(image_size: Vec2, bounds: Rect) -> Rect {
     Rect::from_center_size(bounds.center(), size)
 }
 
+/// Place `image_size` at its native 1:1 size (one image pixel per screen
+/// point), centred inside `bounds`, when it fits. Oversized images fall back to
+/// [`fit_rect`] so they are scaled down to fit rather than overflowing.
+pub fn native_rect(image_size: Vec2, bounds: Rect) -> Rect {
+    if image_size.x <= bounds.width() && image_size.y <= bounds.height() {
+        Rect::from_center_size(bounds.center(), image_size)
+    } else {
+        fit_rect(image_size, bounds)
+    }
+}
+
 pub fn screen_to_image(position: Pos2, draw_rect: Rect, image_size: Vec2) -> Pos2 {
     let x = ((position.x - draw_rect.min.x) / draw_rect.width() * image_size.x)
         .clamp(0.0, image_size.x);
@@ -62,6 +73,22 @@ pub fn translate_rect_clamped(rect: Rect, delta: Vec2, image_size: Vec2) -> Rect
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_rect_keeps_small_images_unscaled() {
+        let bounds = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
+        let rect = native_rect(vec2(320.0, 200.0), bounds);
+        assert_eq!(rect.size(), vec2(320.0, 200.0));
+        assert_eq!(rect.center(), bounds.center());
+    }
+
+    #[test]
+    fn native_rect_scales_oversized_images_to_fit() {
+        let bounds = Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 400.0));
+        let rect = native_rect(vec2(800.0, 400.0), bounds);
+        assert_eq!(rect.size(), vec2(400.0, 200.0));
+        assert_eq!(rect.center(), bounds.center());
+    }
 
     #[test]
     fn translate_clamps_to_image_bounds() {

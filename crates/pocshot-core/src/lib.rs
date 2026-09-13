@@ -1,4 +1,5 @@
 pub mod capture;
+pub mod clipboard;
 pub mod error;
 pub mod notification;
 pub mod platform;
@@ -17,4 +18,5 @@ pub use types::{
 pub use capture::{
     capture_rgba, capture_screen_with_monitor, list_monitors, list_windows, validate_options,
 };
+pub use clipboard::{clipboard_has_image, read_clipboard_image};
 pub use save::{capture, copy_rgba_to_clipboard, default_output_path, resolve_format, save_rgba};

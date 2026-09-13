@@ -11,7 +11,7 @@ mod theme;
 mod toolbar;
 mod window_snap;
 
-pub use app::{run, run_pin};
+pub use app::{run, run_edit, run_pin};
 
 /// Initialize the process-wide logger (used by the `pocshot` CLI too, which
 /// calls into the shared crates).

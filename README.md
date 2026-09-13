@@ -11,6 +11,8 @@ Pocshot is a Rust screenshot tool with a unified binary providing both an intera
 - Save PNG or JPEG screenshots
 - Add a capture delay
 - Copy the captured image to the clipboard when requested
+- Edit an image already on the clipboard in the same fullscreen annotator
+  (`pocshot edit`, or the tray menu when the clipboard holds an image)
 - List monitors and windows as JSON for scripting
 - Edge detection snap lines: selection edges snap to detected UI boundaries
 - Text detection (optional, ONNX): detected text boxes feed the same snapping
@@ -35,6 +37,12 @@ cargo run -p pocshot -- list monitors
 cargo run -p pocshot -- list windows
 ```
 
+Edit the image currently on the clipboard (errors if it does not hold an image):
+
+```sh
+cargo run -p pocshot -- edit
+```
+
 Build a standalone binary:
 
 ```sh
@@ -51,7 +59,7 @@ crates/
 ├── pocshot-ocr/    # Optional ONNX text detection + post-processing
 ├── pocshot-snap/   # Edge detection and snap line algorithm (imageproc)
 ├── pocshot-gui/    # egui/eframe GUI library (app, canvas, selection, toolbar, snap)
-└── pocshot/        # Unified binary (clap: gui / capture / list)
+└── pocshot/        # Unified binary (clap: gui / capture / edit / tray / list / debug)
 ```
 
 ## Linux Dependencies

@@ -64,7 +64,7 @@ impl PocshotApp {
         action: Action,
     ) {
         match action {
-            Action::Refresh => self.begin_capture(),
+            Action::Refresh => self.refresh_source(ctx),
             Action::Save => self.save_selection(),
             Action::Copy => self.copy_selection(ctx),
             Action::Undo => {

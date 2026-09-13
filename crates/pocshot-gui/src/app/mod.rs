@@ -20,7 +20,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::sync::Arc;
 
 use crate::annotation::{AnnotationState, AnnotationTool};
-use crate::canvas::{capture_size, clamp_image_rect, fit_rect, screen_to_image};
+use crate::canvas::{capture_size, clamp_image_rect, fit_rect, native_rect, screen_to_image};
 use crate::config;
 use crate::selection::{handle_rects, HandleType, ImageSelection};
 use crate::snap::{snap_pos, SNAP_DISTANCE};
@@ -30,21 +30,45 @@ use crate::toolbar::{show_settings_panel, show_toolbar, Action, ToolbarState};
 /// (needed to map global window coordinates into image coordinates).
 type CaptureResult = Result<(RgbaImage, pocshot_core::MonitorInfo), String>;
 
-pub fn run() -> eframe::Result<()> {
-    crate::logging::init();
-    let options = eframe::NativeOptions {
+/// Where the base image the editor annotates comes from.
+enum AppSource {
+    /// Capture the screen (the normal `pocshot gui` flow).
+    Screen,
+    /// Use an image handed in by the caller (the "edit clipboard image" flow).
+    Clipboard(RgbaImage),
+}
+
+fn fullscreen_options() -> eframe::NativeOptions {
+    eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Pocshot")
             .with_fullscreen(true)
             .with_transparent(true)
             .with_decorations(false),
         ..Default::default()
-    };
+    }
+}
+
+pub fn run() -> eframe::Result<()> {
+    crate::logging::init();
 
     eframe::run_native(
         "Pocshot",
-        options,
-        Box::new(|cc| Ok(Box::new(PocshotApp::new(cc)))),
+        fullscreen_options(),
+        Box::new(|cc| Ok(Box::new(PocshotApp::new(cc, AppSource::Screen)))),
+    )
+}
+
+/// Open the editor on an image from the clipboard instead of a screen capture.
+/// The image is centred in the fullscreen canvas and pre-selected so it can be
+/// copied or saved immediately, then annotated/cropped like any capture.
+pub fn run_edit(image: RgbaImage) -> eframe::Result<()> {
+    crate::logging::init();
+
+    eframe::run_native(
+        "Pocshot",
+        fullscreen_options(),
+        Box::new(move |cc| Ok(Box::new(PocshotApp::new(cc, AppSource::Clipboard(image))))),
     )
 }
 
@@ -202,13 +226,17 @@ struct PocshotApp {
     /// to, when "detect text only in selection" was used; `None` = full image.
     ocr_ready_region: Option<Rect>,
     capture_version: u64,
+    /// True when the base image came from the clipboard: the screen is never
+    /// captured, OS window snapping is skipped, and refresh re-reads the
+    /// clipboard instead of recapturing.
+    clipboard_mode: bool,
     /// Active visual theme (colors, font sizes, geometry). Loaded from config
     /// at startup and swapped live on "Reload theme".
     theme: crate::theme::Theme,
 }
 
 impl PocshotApp {
-    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>, source: AppSource) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         // DPI normalization is applied in `update` (native_pixels_per_point is
@@ -254,9 +282,13 @@ impl PocshotApp {
             ocr_ready_version: 0,
             ocr_ready_region: None,
             capture_version: 0,
+            clipboard_mode: matches!(source, AppSource::Clipboard(_)),
             theme: settings.theme,
         };
-        app.begin_capture();
+        match source {
+            AppSource::Screen => app.begin_capture(),
+            AppSource::Clipboard(image) => app.on_capture_ready(image, None, &cc.egui_ctx),
+        }
         app
     }
 
@@ -295,6 +327,19 @@ impl PocshotApp {
         });
     }
 
+    /// Reload the base image from its source: recapture the screen, or re-read
+    /// the clipboard when editing a clipboard image.
+    fn refresh_source(&mut self, ctx: &egui::Context) {
+        if self.clipboard_mode {
+            match pocshot_core::read_clipboard_image() {
+                Ok(image) => self.on_capture_ready(image, None, ctx),
+                Err(error) => self.status = error.to_string(),
+            }
+        } else {
+            self.begin_capture();
+        }
+    }
+
     /// Deliver a completed background capture. Builds the texture, resets the
     /// per-capture interaction state and launches the snap (window + edge) and
     /// OCR workers.
@@ -305,7 +350,7 @@ impl PocshotApp {
         match rx.try_recv() {
             Ok(Ok((image, monitor))) => {
                 self.capture_rx = None;
-                self.on_capture_ready(image, monitor, ctx);
+                self.on_capture_ready(image, Some(monitor), ctx);
             }
             Ok(Err(error)) => {
                 self.capture_rx = None;
@@ -320,10 +365,14 @@ impl PocshotApp {
         }
     }
 
+    /// Install a base image (from a screen capture or the clipboard), reset the
+    /// per-image interaction state and kick off the snap + OCR workers. The
+    /// monitor is only present for screen captures; without it the OS
+    /// window-edge snapping pass is skipped.
     fn on_capture_ready(
         &mut self,
         image: RgbaImage,
-        monitor: pocshot_core::MonitorInfo,
+        monitor: Option<pocshot_core::MonitorInfo>,
         ctx: &egui::Context,
     ) {
         let size = [image.width() as usize, image.height() as usize];
@@ -352,23 +401,25 @@ impl PocshotApp {
         self.snap_lines_rx = Some(rx);
 
         let img_for_thread = image.clone();
-        let (origin_x, origin_y) = (monitor.x, monitor.y);
         let own_pid = std::process::id();
         std::thread::spawn(move || {
             let mut result = detect_snap_lines(&img_for_thread, &SnapConfig::default());
 
             // OS-level outer regions: each top-level window that intersects the
             // captured monitor contributes its four frame edges. The Sobel pass
-            // above covers the panels *inside* those windows.
-            match pocshot_core::list_windows() {
-                Ok(windows) => {
-                    let window_lines = crate::window_snap::window_snap_lines(
-                        &windows, origin_x, origin_y, iw as u32, ih as u32, own_pid,
-                    );
-                    result.horizontal.extend(window_lines.horizontal);
-                    result.vertical.extend(window_lines.vertical);
+            // above covers the panels *inside* those windows. Skipped for
+            // clipboard images, which have no screen geometry.
+            if let Some(monitor) = monitor {
+                match pocshot_core::list_windows() {
+                    Ok(windows) => {
+                        let window_lines = crate::window_snap::window_snap_lines(
+                            &windows, monitor.x, monitor.y, iw as u32, ih as u32, own_pid,
+                        );
+                        result.horizontal.extend(window_lines.horizontal);
+                        result.vertical.extend(window_lines.vertical);
+                    }
+                    Err(e) => log::warn!("window snap detection unavailable: {e:#}"),
                 }
-                Err(e) => log::warn!("window snap detection unavailable: {e:#}"),
             }
 
             result.horizontal.extend_from_slice(&[0.0, ih]);
@@ -379,6 +430,15 @@ impl PocshotApp {
         });
 
         self.capture_version += 1;
+        // Clipboard editing opens with the whole image selected so it can be
+        // copied or saved immediately; dragging outside the selection crops it
+        // like a fresh capture.
+        if self.clipboard_mode {
+            self.selection = Some(ImageSelection {
+                start: Pos2::ZERO,
+                end: pos2(iw, ih),
+            });
+        }
         // Keep the last valid detection result visible while the new
         // capture's detection runs; poll_ocr swaps it when ready.
         if config::should_run_detection(self.ocr_enabled, true) {
@@ -480,7 +540,7 @@ impl PocshotApp {
             self.copy_selection(ctx);
         }
         if ctx.input(|input| input.key_pressed(Key::R) && input.modifiers.command) {
-            self.begin_capture();
+            self.refresh_source(ctx);
         }
         let undo_pressed = ctx.input(|input| input.key_pressed(Key::Z) && input.modifiers.command);
         let shift = ctx.input(|input| input.modifiers.shift);
@@ -806,9 +866,19 @@ impl eframe::App for PocshotApp {
 
                 let available = ui.available_rect_before_wrap();
                 let image_size = texture.size_vec2();
-                let draw_rect = fit_rect(image_size, available);
+                // Clipboard images keep their native size (1:1 with screen
+                // pixels) and sit centred; screen captures fill the canvas.
+                let draw_rect = if self.clipboard_mode {
+                    native_rect(image_size, available)
+                } else {
+                    fit_rect(image_size, available)
+                };
 
-                let painter = ui.painter_at(draw_rect);
+                // Full-panel painter: the overlay/help/status sit at screen
+                // coordinates and must not be clipped to a small native-size
+                // clipboard image. Image-space painting still maps into
+                // `draw_rect`.
+                let painter = ui.painter().clone();
                 painter.image(
                     texture.id(),
                     draw_rect,
@@ -856,6 +926,7 @@ impl eframe::App for PocshotApp {
                             },
                             ui,
                             draw_rect,
+                            available,
                             image_size,
                             selection_for_toolbar,
                             is_selecting,

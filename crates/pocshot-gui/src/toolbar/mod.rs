@@ -52,7 +52,12 @@ pub struct ToolbarState<'a> {
 pub fn show_toolbar(
     state: ToolbarState,
     ui: &mut egui::Ui,
+    // `draw_rect` maps image coordinates to screen space (the displayed image
+    // rect). `bounds` is the screen-space area the toolbar may occupy: equal to
+    // `draw_rect` for a full-monitor capture, but the whole viewport for a
+    // clipboard image shown at native size so the toolbar is not squeezed.
     draw_rect: Rect,
+    bounds: Rect,
     image_size: Vec2,
     selection: Option<ImageSelection>,
     is_selecting: bool,
@@ -69,10 +74,10 @@ pub fn show_toolbar(
 
     let theme = state.theme;
     let margin = theme.geometry.toolbar_margin;
-    let space_bottom = draw_rect.bottom() - sel_screen_rect.bottom();
-    let space_right = draw_rect.right() - sel_screen_rect.right();
-    let space_top = sel_screen_rect.top() - draw_rect.top();
-    let space_left = sel_screen_rect.left() - draw_rect.left();
+    let space_bottom = bounds.bottom() - sel_screen_rect.bottom();
+    let space_right = bounds.right() - sel_screen_rect.right();
+    let space_top = sel_screen_rect.top() - bounds.top();
+    let space_left = sel_screen_rect.left() - bounds.left();
 
     // Group boxes are sized dynamically from the number of buttons so adding a
     // toolbar button can never overflow the box again.
@@ -102,13 +107,13 @@ pub fn show_toolbar(
     let single_row_w = g1_w_h + margin + g2_w_h + margin + g3_w_h;
 
     let (g1_info, g2_info, g3_info) =
-        if space_bottom >= 46.0 && draw_rect.width() >= (single_row_w + 2.0 * margin) {
+        if space_bottom >= 46.0 && bounds.width() >= (single_row_w + 2.0 * margin) {
             // DEFAULT: All buttons in 1 single horizontal row at BOTTOM
             let block_w = single_row_w;
             let cx = sel_screen_rect.center().x;
             let start_x = (cx - block_w / 2.0).clamp(
-                draw_rect.left() + margin,
-                (draw_rect.right() - block_w - margin).max(draw_rect.left() + margin),
+                bounds.left() + margin,
+                (bounds.right() - block_w - margin).max(bounds.left() + margin),
             );
             let y = sel_screen_rect.bottom() + margin;
 
@@ -135,8 +140,8 @@ pub fn show_toolbar(
             let block_w = r1_w.max(r2_w);
             let cx = sel_screen_rect.center().x;
             let start_x = (cx - block_w / 2.0).clamp(
-                draw_rect.left() + margin,
-                (draw_rect.right() - block_w - margin).max(draw_rect.left() + margin),
+                bounds.left() + margin,
+                (bounds.right() - block_w - margin).max(bounds.left() + margin),
             );
             let r1_y = sel_screen_rect.bottom() + margin;
             let r2_y = r1_y + 40.0 + margin;
@@ -164,8 +169,8 @@ pub fn show_toolbar(
             // Bottom (Horizontal) + Right (Vertical)
             let r1_w = g1_w_h.max(g2_w_h);
             let start_x = (sel_screen_rect.center().x - r1_w / 2.0).clamp(
-                draw_rect.left() + margin,
-                (draw_rect.right() - r1_w - margin).max(draw_rect.left() + margin),
+                bounds.left() + margin,
+                (bounds.right() - r1_w - margin).max(bounds.left() + margin),
             );
             let b_y = sel_screen_rect.bottom() + margin;
 
@@ -178,12 +183,12 @@ pub fn show_toolbar(
                 Orientation::Horizontal,
             );
             let rx = (sel_screen_rect.right() + margin).clamp(
-                draw_rect.left() + margin,
-                (draw_rect.right() - 40.0 - margin).max(draw_rect.left() + margin),
+                bounds.left() + margin,
+                (bounds.right() - 40.0 - margin).max(bounds.left() + margin),
             );
             let ry = (sel_screen_rect.center().y - g3_h_v / 2.0).clamp(
-                draw_rect.top() + margin,
-                (draw_rect.bottom() - g3_h_v - margin).max(draw_rect.top() + margin),
+                bounds.top() + margin,
+                (bounds.bottom() - g3_h_v - margin).max(bounds.top() + margin),
             );
             let g3 = (
                 Rect::from_min_size(Pos2::new(rx, ry), vec2(40.0, g3_h_v)),
@@ -232,12 +237,12 @@ pub fn show_toolbar(
                         };
                         let cx = sel_screen_rect.center().x;
                         let x = (cx - w / 2.0).clamp(
-                            draw_rect.left() + margin,
-                            (draw_rect.right() - w - margin).max(draw_rect.left() + margin),
+                            bounds.left() + margin,
+                            (bounds.right() - w - margin).max(bounds.left() + margin),
                         );
                         let y = y_base.clamp(
-                            draw_rect.top() + margin,
-                            (draw_rect.bottom() - h - margin).max(draw_rect.top() + margin),
+                            bounds.top() + margin,
+                            (bounds.bottom() - h - margin).max(bounds.top() + margin),
                         );
                         (Rect::from_min_size(Pos2::new(x, y), vec2(w, h)), orient)
                     }
@@ -252,12 +257,12 @@ pub fn show_toolbar(
                         };
                         let cy = sel_screen_rect.center().y + (idx as f32) * (h + margin);
                         let x = x_base.clamp(
-                            draw_rect.left() + margin,
-                            (draw_rect.right() - w - margin).max(draw_rect.left() + margin),
+                            bounds.left() + margin,
+                            (bounds.right() - w - margin).max(bounds.left() + margin),
                         );
                         let y = cy.clamp(
-                            draw_rect.top() + margin,
-                            (draw_rect.bottom() - h - margin).max(draw_rect.top() + margin),
+                            bounds.top() + margin,
+                            (bounds.bottom() - h - margin).max(bounds.top() + margin),
                         );
                         (Rect::from_min_size(Pos2::new(x, y), vec2(w, h)), orient)
                     }
@@ -268,12 +273,12 @@ pub fn show_toolbar(
                         let cx = sel_screen_rect.center().x;
                         let cy = sel_screen_rect.center().y;
                         let x = (cx - w / 2.0).clamp(
-                            draw_rect.left() + margin,
-                            (draw_rect.right() - w - margin).max(draw_rect.left() + margin),
+                            bounds.left() + margin,
+                            (bounds.right() - w - margin).max(bounds.left() + margin),
                         );
                         let y = (cy - h / 2.0 + idx as f32 * (h + margin)).clamp(
-                            draw_rect.top() + margin,
-                            (draw_rect.bottom() - h - margin).max(draw_rect.top() + margin),
+                            bounds.top() + margin,
+                            (bounds.bottom() - h - margin).max(bounds.top() + margin),
                         );
                         (Rect::from_min_size(Pos2::new(x, y), vec2(w, h)), orient)
                     }

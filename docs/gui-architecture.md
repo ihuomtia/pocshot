@@ -6,6 +6,9 @@ Pocshot uses a single unified binary (`pocshot`) that dispatches to either an in
 
 - No arguments or `gui` subcommand → fullscreen egui/eframe selection GUI
 - `capture` subcommand → CLI capture
+- `pin` subcommand → borderless pinned image window
+- `edit` subcommand → fullscreen editor on the image currently on the clipboard
+- `tray` subcommand → background tray daemon
 - `list` subcommand → list monitors/windows as JSON
 
 ## Crate layout
@@ -96,8 +99,11 @@ service).
 
 - Left click, or the "Take screenshot" menu item, spawns `pocshot gui`
   detached via `pocshot_core::{detach, quiet_io}`; the GUI exits as usual
+- The "Edit clipboard image" item appears only when the clipboard holds an
+  image (`pocshot_core::clipboard_has_image`) and spawns `pocshot edit`
 - Right-click popup menu (GTK on Linux, `TrackPopupMenu` on Windows):
-  "Take screenshot" / separator / "Exit" (stops the daemon)
+  "Take screenshot" / ["Edit clipboard image"] / separator / "Exit" (stops the
+  daemon)
 - The procedural icon (rounded accent square + lens) is generated in code, so
   there is no binary asset to ship
 - Linux menus need GTK3 (the `gtk` feature); the icon itself needs no toolkit

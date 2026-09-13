@@ -28,8 +28,10 @@ enum Command {
     Capture(CaptureArgs),
     /// Show a pinned image snippet in a borderless window
     Pin(PinArgs),
+    /// Edit the image currently on the clipboard in the interactive GUI
+    Edit,
     /// Run a background tray icon (left click starts a screenshot, right click
-    /// menu has Take screenshot / Exit)
+    /// menu has Take screenshot / Edit clipboard image / Exit)
     Tray,
     /// List available monitors or windows as JSON
     List {
@@ -154,6 +156,24 @@ fn main() -> anyhow::Result<()> {
         }
         Some(Command::Capture(args)) => capture(args),
         Some(Command::Pin(args)) => pin(args),
+        Some(Command::Edit) => {
+            let image = match pocshot_core::read_clipboard_image() {
+                Ok(image) => image,
+                Err(e) => {
+                    let message = format!("Clipboard does not contain an image: {e}");
+                    log::error!("{message}");
+                    pocshot_core::show_error_dialog(&message);
+                    std::process::exit(1);
+                }
+            };
+            if let Err(e) = pocshot_gui::run_edit(image) {
+                let message = format!("Pocshot failed to start: {e}");
+                log::error!("{message}");
+                pocshot_core::show_error_dialog(&message);
+                std::process::exit(1);
+            }
+            Ok(())
+        }
         Some(Command::Tray) => {
             if let Err(e) = pocshot_tray::run() {
                 let message = format!("Pocshot tray failed: {e}");
