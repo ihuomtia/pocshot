@@ -4,13 +4,13 @@ mod ocr;
 mod overlay;
 mod selection_ui;
 mod settings;
+mod text_border;
 
 use eframe::egui::{
     self, pos2, vec2, Color32, ColorImage, CursorIcon, Id, Key, Pos2, Rect, Sense, Stroke,
     StrokeKind, TextureHandle, TextureOptions, Vec2,
 };
 use image::{imageops, RgbaImage};
-use pocshot_core::CaptureMode;
 use pocshot_ocr::detect::TextDetector;
 use pocshot_ocr::snap::text_regions_to_guides;
 use pocshot_ocr::TextRegion;
@@ -25,6 +25,10 @@ use crate::config;
 use crate::selection::{handle_rects, HandleType, ImageSelection};
 use crate::snap::{snap_pos, SNAP_DISTANCE};
 use crate::toolbar::{show_settings_panel, show_toolbar, Action, ToolbarState};
+
+/// Result of a background screen capture: the image plus its monitor geometry
+/// (needed to map global window coordinates into image coordinates).
+type CaptureResult = Result<(RgbaImage, pocshot_core::MonitorInfo), String>;
 
 pub fn run() -> eframe::Result<()> {
     crate::logging::init();
@@ -148,6 +152,10 @@ impl eframe::App for PinApp {
 
 struct PocshotApp {
     capture: Option<RgbaImage>,
+    /// In-flight screen capture off the UI thread. Capturing (especially the
+    /// first DXGI/X11 call on Windows) can take seconds; running it in the
+    /// background lets the window paint immediately.
+    capture_rx: Option<Receiver<CaptureResult>>,
     texture: Option<TextureHandle>,
     selection: Option<ImageSelection>,
     drag_start: Option<Pos2>,
@@ -207,6 +215,7 @@ impl PocshotApp {
 
         let mut app = Self {
             capture: None,
+            capture_rx: None,
             texture: None,
             selection: None,
             drag_start: None,
@@ -242,7 +251,7 @@ impl PocshotApp {
             capture_version: 0,
             theme: settings.theme,
         };
-        app.refresh_capture(&cc.egui_ctx);
+        app.begin_capture();
         app
     }
 
@@ -264,67 +273,123 @@ impl PocshotApp {
         }
     }
 
-    fn refresh_capture(&mut self, ctx: &egui::Context) {
-        match pocshot_core::capture_rgba(&CaptureMode::Screen { monitor_id: None }, 0) {
-            Ok(image) => {
-                let size = [image.width() as usize, image.height() as usize];
-                let color_image = ColorImage::from_rgba_unmultiplied(size, image.as_raw());
-                self.texture =
-                    Some(ctx.load_texture("screen-capture", color_image, TextureOptions::LINEAR));
-                self.capture = Some(image.clone());
-                self.capture_undo.clear();
-                self.capture_redo.clear();
-                self.effect_start = None;
-                self.effect_current = None;
-                self.effect_rx = None;
-                self.selection = None;
-                self.drag_start = None;
-                self.dragging_handle = None;
-                self.show_settings = false;
-                let (iw, ih) = (image.width() as f32, image.height() as f32);
-                self.snap_lines = Some(pocshot_snap::SnapLines {
-                    horizontal: vec![0.0, ih],
-                    vertical: vec![0.0, iw],
-                });
+    /// Kick off a fresh screen capture on a background thread. The result is
+    /// picked up by [`Self::poll_capture`] on a later frame, so the window
+    /// shows immediately instead of blocking the first frame on the (slow on
+    /// Windows) backend initialization.
+    fn begin_capture(&mut self) {
+        if self.capture_rx.is_some() {
+            return;
+        }
+        self.status = "Capturing screen…".to_string();
+        let (tx, rx) = mpsc::channel();
+        self.capture_rx = Some(rx);
+        std::thread::spawn(move || {
+            let result = pocshot_core::capture_screen_with_monitor().map_err(|e| e.to_string());
+            let _ = tx.send(result);
+        });
+    }
 
-                let (tx, rx) = mpsc::channel();
-                self.snap_lines_rx = Some(rx);
+    /// Deliver a completed background capture. Builds the texture, resets the
+    /// per-capture interaction state and launches the snap (window + edge) and
+    /// OCR workers.
+    fn poll_capture(&mut self, ctx: &egui::Context) {
+        let Some(rx) = &self.capture_rx else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(Ok((image, monitor))) => {
+                self.capture_rx = None;
+                self.on_capture_ready(image, monitor, ctx);
+            }
+            Ok(Err(error)) => {
+                self.capture_rx = None;
+                self.status = error;
+                self.capture = None;
+                self.texture = None;
+            }
+            Err(mpsc::TryRecvError::Empty) => ctx.request_repaint(),
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.capture_rx = None;
+            }
+        }
+    }
 
-                let img_for_thread = image.clone();
-                std::thread::spawn(move || {
-                    let mut result = detect_snap_lines(&img_for_thread, &SnapConfig::default());
-                    result.horizontal.extend_from_slice(&[0.0, ih]);
-                    result.vertical.extend_from_slice(&[0.0, iw]);
-                    result.horizontal.sort_by(|a, b| a.partial_cmp(b).unwrap());
-                    result.vertical.sort_by(|a, b| a.partial_cmp(b).unwrap());
-                    let _ = tx.send(result);
-                });
+    fn on_capture_ready(
+        &mut self,
+        image: RgbaImage,
+        monitor: pocshot_core::MonitorInfo,
+        ctx: &egui::Context,
+    ) {
+        let size = [image.width() as usize, image.height() as usize];
+        let color_image = ColorImage::from_rgba_unmultiplied(size, image.as_raw());
+        self.texture =
+            Some(ctx.load_texture("screen-capture", color_image, TextureOptions::LINEAR));
+        self.capture = Some(image.clone());
+        self.capture_undo.clear();
+        self.capture_redo.clear();
+        self.effect_start = None;
+        self.effect_current = None;
+        self.effect_rx = None;
+        self.selection = None;
+        self.drag_start = None;
+        self.dragging_handle = None;
+        self.show_settings = false;
+        self.status.clear();
+        let (iw, ih) = (image.width() as f32, image.height() as f32);
+        self.snap_lines = Some(pocshot_snap::SnapLines {
+            horizontal: vec![0.0, ih],
+            vertical: vec![0.0, iw],
+        });
 
-                self.capture_version += 1;
-                // Keep the last valid detection result visible while the new
-                // capture's detection runs; poll_ocr swaps it when ready.
-                if config::should_run_detection(self.ocr_enabled, true) {
-                    if self.run_ocr_detection(image.clone()) {
-                        log::info!(
-                            "captured {}x{}, text detection running in background",
-                            image.width(),
-                            image.height(),
-                        );
-                    }
+        let (tx, rx) = mpsc::channel();
+        self.snap_lines_rx = Some(rx);
+
+        let img_for_thread = image.clone();
+        let (origin_x, origin_y) = (monitor.x, monitor.y);
+        let own_pid = std::process::id();
+        std::thread::spawn(move || {
+            let mut result = detect_snap_lines(&img_for_thread, &SnapConfig::default());
+
+            // OS-level outer regions: each top-level window that intersects the
+            // captured monitor contributes its four frame edges. The Sobel pass
+            // above covers the panels *inside* those windows.
+            match pocshot_core::list_windows() {
+                Ok(windows) => {
+                    let window_lines = crate::window_snap::window_snap_lines(
+                        &windows, origin_x, origin_y, iw as u32, ih as u32, own_pid,
+                    );
+                    result.horizontal.extend(window_lines.horizontal);
+                    result.vertical.extend(window_lines.vertical);
                 }
+                Err(e) => log::warn!("window snap detection unavailable: {e:#}"),
+            }
 
+            result.horizontal.extend_from_slice(&[0.0, ih]);
+            result.vertical.extend_from_slice(&[0.0, iw]);
+            result.horizontal.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            result.vertical.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let _ = tx.send(result);
+        });
+
+        self.capture_version += 1;
+        // Keep the last valid detection result visible while the new
+        // capture's detection runs; poll_ocr swaps it when ready.
+        if config::should_run_detection(self.ocr_enabled, true) {
+            if self.run_ocr_detection(image.clone()) {
                 log::info!(
-                    "captured {}x{}, snap detection running in background",
+                    "captured {}x{}, text detection running in background",
                     image.width(),
                     image.height(),
                 );
             }
-            Err(error) => {
-                self.status = error.to_string();
-                self.capture = None;
-                self.texture = None;
-            }
         }
+
+        log::info!(
+            "captured {}x{}, snap detection running in background",
+            image.width(),
+            image.height(),
+        );
     }
 
     /// Lazily load the ONNX detector once and keep it for reuse. On failure we
@@ -409,7 +474,7 @@ impl PocshotApp {
             self.copy_selection(ctx);
         }
         if ctx.input(|input| input.key_pressed(Key::R) && input.modifiers.command) {
-            self.refresh_capture(ctx);
+            self.begin_capture();
         }
         let undo_pressed = ctx.input(|input| input.key_pressed(Key::Z) && input.modifiers.command);
         let shift = ctx.input(|input| input.modifiers.shift);
@@ -453,6 +518,8 @@ impl PocshotApp {
                 Some(AnnotationTool::Highlighter)
             } else if pressed(Key::N) {
                 Some(AnnotationTool::Counter)
+            } else if pressed(Key::T) {
+                Some(AnnotationTool::HighlightText)
             } else if pressed(Key::M) {
                 Some(AnnotationTool::Pixelate)
             } else if pressed(Key::B) {
@@ -662,6 +729,7 @@ impl eframe::App for PocshotApp {
         self.normalize_dpi(ctx);
         self.shortcuts(ctx, frame);
 
+        self.poll_capture(ctx);
         if let Some(rx) = &self.snap_lines_rx {
             if let Ok(sl) = rx.try_recv() {
                 log::info!(
@@ -785,6 +853,7 @@ impl eframe::App for PocshotApp {
                         ("P", "Pen"),
                         ("H", "Highlight"),
                         ("N", "Number bubble"),
+                        ("T", "Text border"),
                         ("M", "Pixelate"),
                         ("B", "Blur"),
                         ("E", "Eraser"),
@@ -965,6 +1034,17 @@ impl eframe::App for PocshotApp {
                                 image_size,
                                 snap_ok,
                             );
+                        } else if self.annotations.active_tool == AnnotationTool::HighlightText {
+                            canvas_response
+                                .clone()
+                                .on_hover_cursor(CursorIcon::Crosshair);
+                            self.process_text_border_drag(
+                                &canvas_response,
+                                (horiz_snaps.clone(), vert_snaps.clone()),
+                                draw_rect,
+                                image_size,
+                                snap_ok,
+                            );
                         } else {
                             if self.annotations.active_tool.is_draw_tool() {
                                 canvas_response
@@ -1011,7 +1091,11 @@ impl eframe::App for PocshotApp {
                 }
                 self.draw_annotations(&painter, draw_rect, image_size);
                 self.draw_counter_preview(&painter, draw_rect);
-                self.draw_effect_preview(&painter, draw_rect, image_size);
+                if self.annotations.active_tool == AnnotationTool::HighlightText {
+                    self.draw_text_border_preview(&painter, draw_rect, image_size);
+                } else {
+                    self.draw_effect_preview(&painter, draw_rect, image_size);
+                }
                 self.draw_ocr_overlay(&painter, draw_rect, image_size);
                 self.draw_selection_top(ui, &painter, &texture, draw_rect, image_size);
                 self.draw_status_line(&painter, draw_rect, &status);

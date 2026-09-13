@@ -28,11 +28,22 @@ const MIN_GUIDE_EXTENT: f32 = 3.0;
 /// px) are considered the same logical line and merge into one guide.
 const MERGE_THRESHOLD: f32 = 2.0;
 
-/// Maximum vertical gap (image px) between adjacent OCR line-boxes for them to
-/// be grouped into a single text block. Smaller gaps = fewer, larger blocks.
-/// Only each block's outer bounding box generates snap guides (4 per block),
-/// not lines inside the block.
+/// Minimum vertical gap (image px) allowed between OCR line-boxes before they
+/// are considered separate blocks. The effective allowance grows with the line
+/// height (see [`LINE_GAP_RATIO`]) so paragraphs set in a large font are not
+/// split into one block per line.
 const BLOCK_GAP: f32 = 8.0;
+
+/// Vertical gap allowance between adjacent line-boxes, as a fraction of the
+/// smaller box height. Line spacing scales with font size, so a fixed pixel gap
+/// splits large text into per-line blocks (4 guides each) while a
+/// height-relative gap keeps each paragraph a single block.
+const LINE_GAP_RATIO: f32 = 0.7;
+
+/// Required horizontal overlap between a line-box and a block, as a fraction of
+/// the smaller width. Prevents two side-by-side columns (or an unrelated UI
+/// element that merely touches an edge) from chaining into one block.
+const H_OVERLAP_RATIO: f32 = 0.3;
 
 /// Deduplicate near-coincident positions.
 ///
@@ -79,10 +90,13 @@ fn merge_lines(values: &[f32], merge_threshold: f32) -> Vec<f32> {
     merged
 }
 
-/// Group OCR line-boxes into text blocks: a region joins an existing block
-/// when its vertical span is within [`BLOCK_GAP`] of (or overlaps) the block's
-/// vertical span **and** its horizontal span overlaps the block's. Each block
-/// becomes one bounding box; the returned boxes are clamped to the image.
+/// Group OCR line-boxes into text blocks (paragraphs): a region joins the
+/// existing block it overlaps best when its vertical gap is within the
+/// (height-relative) allowance and its horizontal overlap is significant.
+/// Picking the best candidate instead of the first avoids greedy chaining
+/// through a block that only touches at a corner; requiring a real horizontal
+/// overlap keeps side-by-side columns apart. Each block becomes one bounding
+/// box; the returned boxes are clamped to the image.
 fn group_into_blocks(regions: &[TextRegion], image_w: f32, image_h: f32) -> Vec<RectF32> {
     let mut rects: Vec<RectF32> = regions
         .iter()
@@ -94,21 +108,44 @@ fn group_into_blocks(regions: &[TextRegion], image_w: f32, image_h: f32) -> Vec<
             y1: r.rect.y1.clamp(0.0, image_h),
         })
         .collect();
-    rects.sort_by(|a, b| a.y0.partial_cmp(&b.y0).unwrap_or(std::cmp::Ordering::Equal));
+    rects.sort_by(|a, b| {
+        a.y0.partial_cmp(&b.y0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.x0.partial_cmp(&b.x0).unwrap_or(std::cmp::Ordering::Equal))
+    });
 
     let mut blocks: Vec<RectF32> = Vec::new();
     for r in rects {
-        if let Some(block) = blocks.iter_mut().find(|b| {
-            let vertically_adjacent = r.y0 <= b.y1 + BLOCK_GAP && r.y1 >= b.y0 - BLOCK_GAP;
-            let horizontally_overlapping = r.x0 <= b.x1 && r.x1 >= b.x0;
-            vertically_adjacent && horizontally_overlapping
-        }) {
-            block.x0 = block.x0.min(r.x0);
-            block.y0 = block.y0.min(r.y0);
-            block.x1 = block.x1.max(r.x1);
-            block.y1 = block.y1.max(r.y1);
-        } else {
-            blocks.push(r);
+        let mut best: Option<(usize, f32)> = None;
+        for (i, b) in blocks.iter().enumerate() {
+            let vertical_gap = (r.y0 - b.y1).max(b.y0 - r.y1).max(0.0);
+            let gap_limit = BLOCK_GAP.max(LINE_GAP_RATIO * r.height().min(b.height()));
+            if vertical_gap > gap_limit {
+                continue;
+            }
+            let overlap = (r.x1.min(b.x1) - r.x0.max(b.x0)).max(0.0);
+            let smaller_w = r.width().min(b.width());
+            if smaller_w <= 0.0 {
+                continue;
+            }
+            let ratio = overlap / smaller_w;
+            if ratio < H_OVERLAP_RATIO {
+                continue;
+            }
+            if best.is_none_or(|(_, best_ratio)| ratio > best_ratio) {
+                best = Some((i, ratio));
+            }
+        }
+
+        match best {
+            Some((i, _)) => {
+                let b = &mut blocks[i];
+                b.x0 = b.x0.min(r.x0);
+                b.y0 = b.y0.min(r.y0);
+                b.x1 = b.x1.max(r.x1);
+                b.y1 = b.y1.max(r.y1);
+            }
+            None => blocks.push(r),
         }
     }
     blocks
@@ -186,14 +223,54 @@ mod tests {
 
     #[test]
     fn distant_blocks_stay_separate() {
-        // Facing borders 10px apart (> BLOCK_GAP 8) → two blocks with no shared
-        // edge to merge.
+        // Gap of 60px exceeds the height-relative allowance for 50px-tall boxes
+        // (max(8, 0.7*50) = 35) → two blocks with no shared edge to merge.
         let a = TextRegion::new(RectF32::new(0.0, 100.0, 100.0, 150.0), 0.9);
-        let b = TextRegion::new(RectF32::new(0.0, 160.0, 100.0, 210.0), 0.9);
+        let b = TextRegion::new(RectF32::new(0.0, 210.0, 100.0, 260.0), 0.9);
         let guides = text_regions_to_guides(&[a, b], 1920.0, 1080.0);
-        assert_eq!(guides.horizontal, vec![100.0, 150.0, 160.0, 210.0]);
+        assert_eq!(guides.horizontal, vec![100.0, 150.0, 210.0, 260.0]);
         // Both blocks share left/right edges → merged vertical pair.
         assert_eq!(guides.vertical, vec![0.0, 100.0]);
+    }
+
+    #[test]
+    fn large_font_line_spacing_stays_one_block() {
+        // 40px-tall lines spaced 20px apart: the fixed 8px gap would split them,
+        // but the height-relative allowance (0.7*40 = 28) keeps one block, so a
+        // paragraph contributes only its outer borders.
+        let lines = [
+            RectF32::new(100.0, 100.0, 400.0, 140.0),
+            RectF32::new(100.0, 160.0, 400.0, 200.0),
+            RectF32::new(100.0, 220.0, 400.0, 260.0),
+        ];
+        let regions: Vec<TextRegion> = lines.iter().map(|r| TextRegion::new(*r, 0.9)).collect();
+        let guides = text_regions_to_guides(&regions, 1920.0, 1080.0);
+        assert_eq!(guides.horizontal, vec![100.0, 260.0]);
+        assert_eq!(guides.vertical, vec![100.0, 400.0]);
+    }
+
+    #[test]
+    fn columns_do_not_chain_through_small_overlap() {
+        // Left column block (x 0..100) and a right-column line that only clips
+        // its edge (5px overlap = 5% < 30%) must stay separate blocks.
+        let left = TextRegion::new(RectF32::new(0.0, 0.0, 100.0, 40.0), 0.9);
+        let left2 = TextRegion::new(RectF32::new(0.0, 42.0, 100.0, 80.0), 0.9);
+        let right = TextRegion::new(RectF32::new(95.0, 44.0, 195.0, 84.0), 0.9);
+        let guides = text_regions_to_guides(&[left, left2, right], 1920.0, 1080.0);
+        // Left lines group into one block (y 0..80); the right line is its own.
+        assert!(guides.horizontal.contains(&0.0));
+        assert!(guides.horizontal.contains(&80.0));
+        assert!(guides.horizontal.contains(&44.0));
+        assert!(guides.horizontal.contains(&84.0));
+    }
+
+    #[test]
+    fn small_font_with_large_gap_stays_separate() {
+        // Tiny 8px lines 20px apart: allowance is max(8, 5.6) = 8 → split.
+        let a = TextRegion::new(RectF32::new(0.0, 0.0, 60.0, 8.0), 0.9);
+        let b = TextRegion::new(RectF32::new(0.0, 28.0, 60.0, 36.0), 0.9);
+        let guides = text_regions_to_guides(&[a, b], 1920.0, 1080.0);
+        assert_eq!(guides.horizontal, vec![0.0, 8.0, 28.0, 36.0]);
     }
 
     #[test]

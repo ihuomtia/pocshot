@@ -33,6 +33,16 @@ impl RectTool {
         }
     }
 
+    /// A rectangle outline already anchored to `rect` (used when a ready-made
+    /// border is committed without a drag gesture).
+    pub fn with_rect(rect: Rect) -> Self {
+        Self {
+            start: rect.min,
+            rect,
+            filled: false,
+        }
+    }
+
     fn draw_outline(
         &self,
         painter: &Painter,

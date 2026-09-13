@@ -8,22 +8,33 @@ use crate::types::{CaptureMode, CaptureOptions, MonitorInfo, WindowInfo};
 
 pub fn list_monitors() -> Result<Vec<MonitorInfo>> {
     let monitors = Monitor::all().map_err(capture_err)?;
-    monitors
-        .iter()
-        .map(|monitor| {
-            Ok(MonitorInfo {
-                id: monitor.id().map_err(capture_err)?,
-                name: monitor.name().map_err(capture_err)?,
-                friendly_name: monitor.friendly_name().map_err(capture_err)?,
-                x: monitor.x().map_err(capture_err)?,
-                y: monitor.y().map_err(capture_err)?,
-                width: monitor.width().map_err(capture_err)?,
-                height: monitor.height().map_err(capture_err)?,
-                scale_factor: monitor.scale_factor().map_err(capture_err)?,
-                is_primary: monitor.is_primary().map_err(capture_err)?,
-            })
-        })
-        .collect()
+    monitors.iter().map(monitor_info).collect()
+}
+
+fn monitor_info(monitor: &Monitor) -> Result<MonitorInfo> {
+    Ok(MonitorInfo {
+        id: monitor.id().map_err(capture_err)?,
+        name: monitor.name().map_err(capture_err)?,
+        friendly_name: monitor.friendly_name().map_err(capture_err)?,
+        x: monitor.x().map_err(capture_err)?,
+        y: monitor.y().map_err(capture_err)?,
+        width: monitor.width().map_err(capture_err)?,
+        height: monitor.height().map_err(capture_err)?,
+        scale_factor: monitor.scale_factor().map_err(capture_err)?,
+        is_primary: monitor.is_primary().map_err(capture_err)?,
+    })
+}
+
+/// Capture the primary monitor (the same monitor
+/// `CaptureMode::Screen { monitor_id: None }` selects) together with its
+/// geometry, so callers can convert global window coordinates into image
+/// coordinates (window positions are in the virtual-desktop space; the image
+/// origin is the monitor's top-left).
+pub fn capture_screen_with_monitor() -> Result<(RgbaImage, MonitorInfo)> {
+    let monitor = select_monitor(None)?;
+    let info = monitor_info(&monitor)?;
+    let image = monitor.capture_image().map_err(capture_err)?;
+    Ok((image, info))
 }
 
 pub fn list_windows() -> Result<Vec<WindowInfo>> {

@@ -81,6 +81,11 @@ pub(crate) const TOOL_BUTTONS: &[ToolButtonDef] = &[
         name: "Text",
     },
     ToolButtonDef {
+        icon: icons::BOUNDING_BOX,
+        tool: AnnotationTool::HighlightText,
+        name: "Text border",
+    },
+    ToolButtonDef {
         icon: icons::ERASER,
         tool: AnnotationTool::Eraser,
         name: "Eraser",

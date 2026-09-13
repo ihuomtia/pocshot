@@ -14,7 +14,7 @@ Pocshot uses a single unified binary (`pocshot`) that dispatches to either an in
 |-------|------|----------------|
 | `pocshot-core` | lib | Capture (xcap), save (PNG/JPEG), clipboard (arboard), types, errors |
 | `pocshot-snap` | lib | Edge detection and snap line algorithm (imageproc: Sobel → threshold → directional dilate → projection) |
-| `pocshot-gui` | lib | egui/eframe GUI: app, canvas, selection, toolbar, snap helpers |
+| `pocshot-gui` | lib | egui/eframe GUI: app, canvas, selection, toolbar, snap helpers, OS window snap (`window_snap`) |
 | `pocshot` | bin | Unified binary with clap dispatch |
 
 ## GUI modules (`pocshot-gui`)
@@ -25,15 +25,26 @@ Pocshot uses a single unified binary (`pocshot`) that dispatches to either an in
 - `toolbar.rs` — Action enum, ToolButton, toolbar rendering, clipboard toggle
 - `snap.rs` — snap_pos() helper, SNAP_DISTANCE constant
 
-## Snap line algorithm (`pocshot-snap`)
+## Snap line algorithm (`pocshot-snap` + `window_snap`)
 
-1. RGBA → grayscale (Luma8)
-2. Sobel gradients: `vertical_sobel` for horizontal edges, `horizontal_sobel` for vertical edges
-3. i16 → u8 absolute, clamp to 255
-4. Threshold at `gradient_threshold` (default 25)
-5. **Directional dilation** — horizontal-only for horizontal edges, vertical-only for vertical edges (bridges gaps without thickening)
-6. Projection — count non-zero pixels per row/column, threshold at `min_line_ratio` fraction (default 10%)
-7. Merge nearby lines within `merge_distance` (default 4px)
+Two region-detection passes are combined:
+
+1. **OS-level windows** (`pocshot-core::list_windows` → `window_snap::window_snap_lines`):
+   top-level windows intersecting the captured monitor contribute their four
+   outer frame edges. This catches the outer regions the edge pass can't.
+2. **Edge detection** (`pocshot-snap`) finds the panels *inside* those windows:
+
+   1. RGBA → grayscale (Luma8)
+   2. Sobel gradients: `vertical_sobel` for horizontal edges, `horizontal_sobel` for vertical edges
+   3. i16 → u8 absolute, clamp to 255
+   4. Threshold at `gradient_threshold` (default 25)
+   5. **Directional dilation** — horizontal-only for horizontal edges, vertical-only for vertical edges (bridges gaps without thickening)
+   6. Projection — count non-zero pixels per row/column, threshold at `min_line_ratio` fraction (default 10%)
+   7. Merge nearby lines within `merge_distance` (default 4px)
+
+Both passes run on a background thread after the capture arrives; window
+coordinates are translated from the virtual-desktop origin to image space and
+clamped, and windows owned by this process (the GUI itself) are excluded.
 
 ### SnapConfig defaults
 
@@ -45,19 +56,24 @@ Pocshot uses a single unified binary (`pocshot`) that dispatches to either an in
 ## Capture surface
 
 - Borderless fullscreen window on launch
-- Captures primary monitor immediately
+- Screen capture runs on a background thread; the window paints immediately and
+  swaps in the screenshot when ready (`Capturing screen…` meanwhile)
 - Background = captured screenshot texture
 - Drag to select region
 - 8 resize handles (corners + edges) with appropriate cursor icons
 - Selection edges snap to detected lines within 8px threshold
 - Orange indicator lines shown when snap is active
 - Toolbar auto-positions near selection
+- **Text border** tool (`T`): drag over detected text and a padded rectangular
+  border is committed around the union of the OCR regions under the drag
+- OCR text blocks contribute snap guides only through their outer block borders
+  (paragraph-level), so per-line boxes don't flood the snapping engine
 
 ## Future features
 
-- Auto-region detection from captured pixel buffer
+- Automatic note taking
+- Context-aware screenshots (window/app metadata)
 - Magnifier around the cursor
-- Annotation layers over the selected crop
 - Grid snapping
 
 ## Constraints

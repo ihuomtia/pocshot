@@ -1,3 +1,8 @@
+// Release builds on Windows must not spawn a console window: pocshot is a GUI
+// screenshot tool, and the console that the default subsystem opens is both
+// ugly and slow to appear. Debug builds keep the console so logs are visible.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use std::path::PathBuf;
 
 use anyhow::Context;

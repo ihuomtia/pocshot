@@ -10,6 +10,7 @@ mod selection;
 mod snap;
 mod theme;
 mod toolbar;
+mod window_snap;
 
 pub use app::{run, run_pin};
 

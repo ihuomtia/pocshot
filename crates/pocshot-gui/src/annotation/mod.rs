@@ -45,6 +45,9 @@ pub enum AnnotationTool {
     Pixelate,
     Blur,
     Text,
+    /// Draw a rectangular border around detected text (OCR regions) under the
+    /// drag. Handled at the app level because it needs the OCR results.
+    HighlightText,
     Eraser,
 }
 
@@ -59,6 +62,7 @@ impl AnnotationTool {
                 | AnnotationTool::Pixelate
                 | AnnotationTool::Blur
                 | AnnotationTool::Text
+                | AnnotationTool::HighlightText
                 | AnnotationTool::Eraser
         )
     }
@@ -311,6 +315,18 @@ impl AnnotationState {
         self.constraint_angle = None;
     }
 
+    /// Push a ready-made rectangle outline (used by the Text-border tool, which
+    /// computes its rect from OCR regions rather than a drag gesture). Clears
+    /// the redo stack like any other committed annotation.
+    pub fn push_rect(&mut self, rect: Rect) {
+        self.annotations.push(Annotation {
+            tool: ToolKind::Rectangle(rect::RectTool::with_rect(rect)),
+            color: self.color,
+            stroke_width: self.stroke_width,
+        });
+        self.redo_stack.clear();
+    }
+
     pub fn process_drag(
         &mut self,
         response: &egui::Response,
@@ -340,7 +356,7 @@ impl AnnotationState {
         }
 
         // Image-effect tools (pixelate/blur) are handled at the app level.
-        if self.active_tool.is_image_effect() {
+        if self.active_tool.is_image_effect() || self.active_tool == AnnotationTool::HighlightText {
             return;
         }
 
