@@ -105,8 +105,6 @@ pub fn show_settings_panel(
     ui.add_space(2.0);
     ui.checkbox(ocr_enabled, "Enable text detection");
     ui.checkbox(show_text_boxes, "Show text bounding boxes");
-    ui.checkbox(show_ocr_debug, "Show OCR debug zones");
-    ui.checkbox(ocr_region_only, "Detect text only in selection");
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.label(

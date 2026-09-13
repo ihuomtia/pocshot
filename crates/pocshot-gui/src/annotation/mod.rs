@@ -48,6 +48,9 @@ pub enum AnnotationTool {
     /// Draw a rectangular border around detected text (OCR regions) under the
     /// drag. Handled at the app level because it needs the OCR results.
     HighlightText,
+    /// Fill a solid rectangle over detected text (OCR regions) under the drag.
+    /// Handled at the app level because it needs the OCR results.
+    Redact,
     Eraser,
 }
 
@@ -63,6 +66,7 @@ impl AnnotationTool {
                 | AnnotationTool::Blur
                 | AnnotationTool::Text
                 | AnnotationTool::HighlightText
+                | AnnotationTool::Redact
                 | AnnotationTool::Eraser
         )
     }
@@ -315,12 +319,18 @@ impl AnnotationState {
         self.constraint_angle = None;
     }
 
-    /// Push a ready-made rectangle outline (used by the Text-border tool, which
-    /// computes its rect from OCR regions rather than a drag gesture). Clears
-    /// the redo stack like any other committed annotation.
-    pub fn push_rect(&mut self, rect: Rect) {
+    /// Push a ready-made rectangle (used by the Text-border and Redact tools,
+    /// which compute their rect from OCR regions rather than a drag gesture).
+    /// `filled` selects a solid rectangle; otherwise an outline. Clears the
+    /// redo stack like any other committed annotation.
+    pub fn push_rect(&mut self, rect: Rect, filled: bool) {
+        let tool = if filled {
+            ToolKind::FilledRectangle(rect::RectTool::with_filled_rect(rect))
+        } else {
+            ToolKind::Rectangle(rect::RectTool::with_rect(rect))
+        };
         self.annotations.push(Annotation {
-            tool: ToolKind::Rectangle(rect::RectTool::with_rect(rect)),
+            tool,
             color: self.color,
             stroke_width: self.stroke_width,
         });
@@ -355,8 +365,14 @@ impl AnnotationState {
             return;
         }
 
-        // Image-effect tools (pixelate/blur) are handled at the app level.
-        if self.active_tool.is_image_effect() || self.active_tool == AnnotationTool::HighlightText {
+        // Image-effect tools (pixelate/blur) and the OCR-driven text-region
+        // tools are handled at the app level.
+        if self.active_tool.is_image_effect()
+            || matches!(
+                self.active_tool,
+                AnnotationTool::HighlightText | AnnotationTool::Redact
+            )
+        {
             return;
         }
 

@@ -137,10 +137,17 @@ impl From<FormatArg> for OutputFormat {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     pocshot_gui::init_logging();
+    pocshot_core::install_panic_dialog_hook();
 
     match cli.command {
         None | Some(Command::Gui) => {
-            pocshot_gui::run().map_err(|e| anyhow::anyhow!("GUI exited with error: {e}"))
+            if let Err(e) = pocshot_gui::run() {
+                let message = format!("Pocshot failed to start: {e}");
+                log::error!("{message}");
+                pocshot_core::show_error_dialog(&message);
+                std::process::exit(1);
+            }
+            Ok(())
         }
         Some(Command::Capture(args)) => capture(args),
         Some(Command::Pin(args)) => pin(args),

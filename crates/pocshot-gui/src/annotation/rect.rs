@@ -43,6 +43,15 @@ impl RectTool {
         }
     }
 
+    /// A solid rectangle already anchored to `rect` (Redact tool).
+    pub fn with_filled_rect(rect: Rect) -> Self {
+        Self {
+            start: rect.min,
+            rect,
+            filled: true,
+        }
+    }
+
     fn draw_outline(
         &self,
         painter: &Painter,

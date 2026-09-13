@@ -59,6 +59,72 @@ pub fn models_dir(configured: Option<&str>) -> PathBuf {
     }
 }
 
+/// Show a fatal error to the user.
+///
+/// On Windows the GUI is built without a console (release), so a raw
+/// `anyhow`/panic message on stderr is invisible and the app appears to exit
+/// silently. A native message box guarantees the user sees *something* even
+/// when the windowing/GPU stack failed before any window existed.
+///
+/// On other platforms (where the app always has a terminal or a system log)
+/// this just prints to stderr.
+pub fn show_error_dialog(message: &str) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        let title: Vec<u16> = std::ffi::OsStr::new("Pocshot")
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let text: Vec<u16> = std::ffi::OsStr::new(message)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        const MB_OK: u32 = 0x0000_0000;
+        const MB_ICONERROR: u32 = 0x0000_0010;
+        const MB_SETFOREGROUND: u32 = 0x0001_0000;
+
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn MessageBoxW(
+                hwnd: *mut core::ffi::c_void,
+                text: *const u16,
+                caption: *const u16,
+                u_type: u32,
+            ) -> i32;
+        }
+
+        // SAFETY: both strings are NUL-terminated and outlive the call.
+        unsafe {
+            MessageBoxW(
+                std::ptr::null_mut(),
+                text.as_ptr(),
+                title.as_ptr(),
+                MB_OK | MB_ICONERROR | MB_SETFOREGROUND,
+            );
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        eprintln!("{message}");
+    }
+}
+
+/// Route panics through [`show_error_dialog`] on Windows so a crash during
+/// startup (GPU init, window creation) is not silent. Other platforms keep the
+/// default hook.
+pub fn install_panic_dialog_hook() {
+    #[cfg(target_os = "windows")]
+    {
+        std::panic::set_hook(Box::new(|info| {
+            let message = format!("Pocshot crashed:\n\n{info}");
+            log::error!("{message}");
+            show_error_dialog(&message);
+        }));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

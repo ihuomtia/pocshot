@@ -55,19 +55,34 @@ clamped, and windows owned by this process (the GUI itself) are excluded.
 
 ## Capture surface
 
-- Borderless fullscreen window on launch
+- Borderless fullscreen window on launch, created transparent; `clear_color`
+  stays fully transparent until the screenshot texture exists, so startup does
+  not flash an opaque black fullscreen
 - Screen capture runs on a background thread; the window paints immediately and
-  swaps in the screenshot when ready (`Capturing screen…` meanwhile)
+  swaps in the screenshot when ready (`Capturing screen…` pill meanwhile)
 - Background = captured screenshot texture
-- Drag to select region
+- Drag on empty canvas to select a region
+- **Drag inside an existing selection moves it** (clamped to the image, no
+  snapping); drag outside starts a new region
 - 8 resize handles (corners + edges) with appropriate cursor icons
 - Selection edges snap to detected lines within 8px threshold
 - Orange indicator lines shown when snap is active
 - Toolbar auto-positions near selection
 - **Text border** tool (`T`): drag over detected text and a padded rectangular
   border is committed around the union of the OCR regions under the drag
+- **Redact** tool (`D`): same gesture, but commits a solid rectangle in the
+  current annotation color
+- Both text-region tools clamp their result to the active selection, so a text
+  box extending past the selection never draws outside it
 - OCR text blocks contribute snap guides only through their outer block borders
   (paragraph-level), so per-line boxes don't flood the snapping engine
+
+## Error reporting
+
+Fatal startup failures (e.g. no usable GPU/OpenGL adapter) are reported through
+`pocshot_core::show_error_dialog`: a native `MessageBoxW` on Windows (where the
+release GUI has no console), stderr elsewhere. `install_panic_dialog_hook`
+routes panics through the same dialog on Windows.
 
 ## Future features
 

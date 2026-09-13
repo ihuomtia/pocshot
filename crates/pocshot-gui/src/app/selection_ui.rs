@@ -7,7 +7,10 @@ use eframe::egui::{
 };
 
 use crate::app::PocshotApp;
-use crate::canvas::{clamp_rect_to_size, image_to_screen_rect, normalized_uv, screen_to_image};
+use crate::canvas::{
+    clamp_rect_to_size, image_to_screen_rect, normalized_uv, screen_to_image,
+    translate_rect_clamped,
+};
 use crate::selection::{handle_rects, HandleType, ImageSelection};
 use crate::snap::{snap_pos, SNAP_DISTANCE};
 
@@ -107,18 +110,57 @@ impl PocshotApp {
         snap_ok: bool,
     ) {
         let response = ui.interact(draw_rect, Id::new("capture-canvas"), Sense::drag());
-        response.clone().on_hover_cursor(CursorIcon::Crosshair);
+
+        // Hovering inside an existing selection means "drag to move it"; outside
+        // means "drag a new region".
+        let hover_img = response
+            .hover_pos()
+            .map(|p| screen_to_image(p, draw_rect, image_size));
+        let inside_selection = hover_img
+            .zip(self.selection)
+            .map(|(p, s)| s.rect().contains(p))
+            .unwrap_or(false);
+        if self.dragging_handle.is_none() && self.moving_selection.is_none() {
+            response.clone().on_hover_cursor(if inside_selection {
+                CursorIcon::Move
+            } else {
+                CursorIcon::Crosshair
+            });
+        }
 
         if self.dragging_handle.is_none() {
             if response.drag_started() {
                 if let Some(pointer) = response.interact_pointer_pos() {
                     let image_pos = screen_to_image(pointer, draw_rect, image_size);
-                    self.drag_start = Some(image_pos);
+                    let existing = self.selection.map(|s| {
+                        clamp_rect_to_size(s.rect(), image_size).unwrap_or_else(|| s.rect())
+                    });
+                    match existing {
+                        // Press inside the current region: start moving it.
+                        Some(sel_rect) if sel_rect.contains(image_pos) => {
+                            self.moving_selection = Some((image_pos, sel_rect));
+                            self.drag_start = None;
+                        }
+                        // Press elsewhere: start a new region.
+                        _ => {
+                            self.moving_selection = None;
+                            self.drag_start = Some(image_pos);
+                        }
+                    }
                 }
             }
 
             if response.dragged() {
-                if let (Some(start), Some(pointer)) =
+                if let (Some((anchor, original)), Some(pointer)) =
+                    (self.moving_selection, response.interact_pointer_pos())
+                {
+                    let cur = screen_to_image(pointer, draw_rect, image_size);
+                    let moved = translate_rect_clamped(original, cur - anchor, image_size);
+                    self.selection = Some(ImageSelection {
+                        start: moved.min,
+                        end: moved.max,
+                    });
+                } else if let (Some(start), Some(pointer)) =
                     (self.drag_start, response.interact_pointer_pos())
                 {
                     let end = screen_to_image(pointer, draw_rect, image_size);
@@ -139,6 +181,7 @@ impl PocshotApp {
 
             if response.drag_stopped() {
                 self.drag_start = None;
+                self.moving_selection = None;
             }
         }
     }

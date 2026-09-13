@@ -1,10 +1,11 @@
-//! Text-border tool: drag over detected text and commit a rectangular border
-//! around it.
+//! Text-region tools: drag over detected text and commit a rectangle fitted to
+//! it — an outline (Text border) or a solid fill (Redact).
 //!
 //! The gesture reuses the pixelate/blur drag fields (`effect_start` /
 //! `effect_current`) because the tools are mutually exclusive; on release the
 //! drag rect is expanded to the union of every OCR region it touches, padded,
-//! and committed as an ordinary rectangle outline annotation (undoable).
+//! clamped to the selection (when one exists) and committed as an ordinary
+//! rectangle annotation (undoable).
 
 use eframe::egui::{self, pos2, Pos2, Rect, Stroke, StrokeKind, Vec2};
 use pocshot_ocr::TextRegion;
@@ -13,16 +14,20 @@ use crate::app::PocshotApp;
 use crate::canvas::screen_to_image;
 use crate::snap::{snap_pos, SNAP_DISTANCE};
 
-/// Empty space left between the text and its border, in image pixels.
+/// Empty space left between the text and its border, in image pixels. Only
+/// used by the Text border tool — Redact fills the exact text bounding box.
 pub const TEXT_BORDER_PADDING: f32 = 6.0;
 
-/// Union of the OCR regions that intersect `drag`, grown by `padding` and
-/// clamped to the image. `None` when no region was touched.
+/// Union of the OCR regions that intersect `drag`, grown by `padding`, clamped
+/// to the image and — when `selection` is given — restricted to it, so a text
+/// box extending past the selected region never produces a border outside it.
+/// `None` when no region was touched or the result is empty.
 pub fn text_border_rect(
     drag: Rect,
     regions: &[TextRegion],
     image_size: Vec2,
     padding: f32,
+    selection: Option<Rect>,
 ) -> Option<Rect> {
     let mut min = Pos2::new(f32::INFINITY, f32::INFINITY);
     let mut max = Pos2::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
@@ -43,7 +48,7 @@ pub fn text_border_rect(
         return None;
     }
 
-    Some(Rect::from_min_max(
+    let mut border = Rect::from_min_max(
         pos2(
             (min.x - padding).clamp(0.0, image_size.x),
             (min.y - padding).clamp(0.0, image_size.y),
@@ -52,17 +57,29 @@ pub fn text_border_rect(
             (max.x + padding).clamp(0.0, image_size.x),
             (max.y + padding).clamp(0.0, image_size.y),
         ),
-    ))
+    );
+
+    if let Some(sel) = selection {
+        border = border.intersect(sel);
+        if border.width() < 1.0 || border.height() < 1.0 {
+            return None;
+        }
+    }
+
+    Some(border)
 }
 
 impl PocshotApp {
-    pub(crate) fn process_text_border_drag(
+    /// `filled` = true for the Redact tool (solid rectangle), false for the
+    /// Text border tool (outline).
+    pub(crate) fn process_text_region_drag(
         &mut self,
         response: &egui::Response,
         snaps: (Vec<f32>, Vec<f32>),
         draw_rect: Rect,
         image_size: Vec2,
         snap_ok: bool,
+        filled: bool,
     ) {
         let screen_to_img = |pos: Pos2| screen_to_image(pos, draw_rect, image_size);
         let snap = |img_pos: Pos2| -> Pos2 {
@@ -92,13 +109,24 @@ impl PocshotApp {
             };
             let drag = Rect::from_two_pos(start, cur);
             if drag.width() >= 2.0 && drag.height() >= 2.0 {
+                let selection = self.current_selection_region();
                 if !self.ocr_enabled {
                     self.status = "Enable text detection in Settings to frame text".to_string();
-                } else if let Some(border) =
-                    text_border_rect(drag, &self.ocr_regions, image_size, TEXT_BORDER_PADDING)
-                {
-                    self.annotations.push_rect(border);
-                    self.status = "Text border added".to_string();
+                } else if let Some(border) = text_border_rect(
+                    drag,
+                    &self.ocr_regions,
+                    image_size,
+                    if filled { 0.0 } else { TEXT_BORDER_PADDING },
+                    selection,
+                ) {
+                    self.annotations.push_rect(border, filled);
+                    self.status = if filled {
+                        "Text redacted".to_string()
+                    } else {
+                        "Text border added".to_string()
+                    };
+                } else if selection.is_some() {
+                    self.status = "No text detected inside the selection".to_string();
                 } else {
                     self.status = "No text detected in that area".to_string();
                 }
@@ -107,12 +135,14 @@ impl PocshotApp {
         }
     }
 
-    /// Live preview of the drag rectangle while the text-border tool is active.
-    pub(crate) fn draw_text_border_preview(
+    /// Live preview of the drag rectangle while a text-region tool is active.
+    /// Redact previews as a translucent fill; Text border as an outline.
+    pub(crate) fn draw_text_region_preview(
         &self,
         painter: &egui::Painter,
         draw_rect: Rect,
         image_size: Vec2,
+        filled: bool,
     ) {
         let (Some(start), Some(cur)) = (self.effect_start, self.effect_current) else {
             return;
@@ -124,12 +154,15 @@ impl PocshotApp {
             )
         };
         let rect = Rect::from_two_pos(to_screen(start), to_screen(cur));
-        painter.rect_stroke(
-            rect,
-            0.0,
-            Stroke::new(1.5_f32, self.annotations.color),
-            StrokeKind::Middle,
-        );
+        let color = self.annotations.color;
+        if filled {
+            painter.rect_filled(
+                rect,
+                0.0,
+                egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 90),
+            );
+        }
+        painter.rect_stroke(rect, 0.0, Stroke::new(1.5_f32, color), StrokeKind::Middle);
     }
 }
 
@@ -149,7 +182,7 @@ mod tests {
             region(60.0, 20.0, 90.0, 40.0),
         ];
         let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0));
-        let border = text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0).unwrap();
+        let border = text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0, None).unwrap();
         assert_eq!(border.min, pos2(4.0, 14.0));
         assert_eq!(border.max, pos2(96.0, 46.0));
     }
@@ -161,7 +194,7 @@ mod tests {
             region(150.0, 150.0, 190.0, 180.0),
         ];
         let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(50.0, 50.0));
-        let border = text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0).unwrap();
+        let border = text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0, None).unwrap();
         assert_eq!(border.min, pos2(4.0, 4.0));
         assert_eq!(border.max, pos2(46.0, 36.0));
     }
@@ -170,15 +203,48 @@ mod tests {
     fn no_regions_returns_none() {
         let regions = [region(150.0, 150.0, 190.0, 180.0)];
         let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(50.0, 50.0));
-        assert!(text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0).is_none());
+        assert!(text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0, None).is_none());
     }
 
     #[test]
     fn padding_is_clamped_to_the_image() {
         let regions = [region(0.0, 0.0, 5.0, 5.0)];
         let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(10.0, 10.0));
-        let border = text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0).unwrap();
+        let border = text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0, None).unwrap();
         assert_eq!(border.min, pos2(0.0, 0.0));
         assert_eq!(border.max, pos2(11.0, 11.0));
+    }
+
+    #[test]
+    fn border_is_clamped_to_the_selection() {
+        // Text extends past the selection on every side; the border is cropped
+        // to the selection instead of spilling outside it.
+        let regions = [region(0.0, 0.0, 100.0, 100.0)];
+        let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(200.0, 200.0));
+        let selection = Rect::from_min_max(pos2(20.0, 30.0), pos2(80.0, 90.0));
+        let border = text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            6.0,
+            Some(selection),
+        )
+        .unwrap();
+        assert_eq!(border, selection);
+    }
+
+    #[test]
+    fn empty_intersection_with_selection_returns_none() {
+        let regions = [region(0.0, 0.0, 10.0, 10.0)];
+        let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(200.0, 200.0));
+        let selection = Rect::from_min_max(pos2(100.0, 100.0), pos2(150.0, 150.0));
+        assert!(text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            6.0,
+            Some(selection)
+        )
+        .is_none());
     }
 }

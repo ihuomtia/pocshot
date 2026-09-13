@@ -8,6 +8,7 @@ license.workspace = true
 arboard.workspace = true
 chrono.workspace = true
 image.workspace = true
+log.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 xcap.workspace = true

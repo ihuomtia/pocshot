@@ -43,6 +43,43 @@ pub fn clamp_image_rect(rect: Rect, image: &image::RgbaImage) -> Option<Rect> {
     clamp_rect_to_size(rect, capture_size(image))
 }
 
+/// Translate `rect` by `delta` (image px), clamping so the result stays fully
+/// inside the image. Size is preserved. Used when dragging a committed
+/// selection around.
+pub fn translate_rect_clamped(rect: Rect, delta: Vec2, image_size: Vec2) -> Rect {
+    let size = rect.size();
+    let bounds = Rect::from_min_size(Pos2::ZERO, image_size);
+    let mut min = rect.min + delta;
+    min.x = min
+        .x
+        .clamp(bounds.min.x, (bounds.max.x - size.x).max(bounds.min.x));
+    min.y = min
+        .y
+        .clamp(bounds.min.y, (bounds.max.y - size.y).max(bounds.min.y));
+    Rect::from_min_size(min, size)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn translate_clamps_to_image_bounds() {
+        let rect = Rect::from_min_size(pos2(10.0, 10.0), vec2(100.0, 50.0));
+        let size = vec2(200.0, 200.0);
+        // Free movement within bounds.
+        let moved = translate_rect_clamped(rect, vec2(20.0, 30.0), size);
+        assert_eq!(moved.min, pos2(30.0, 40.0));
+        assert_eq!(moved.size(), rect.size());
+        // Overshooting left/top pins at the origin.
+        let pinned = translate_rect_clamped(rect, vec2(-500.0, -500.0), size);
+        assert_eq!(pinned.min, pos2(0.0, 0.0));
+        // Overshooting right/bottom pins the far edge at the image edge.
+        let pinned = translate_rect_clamped(rect, vec2(500.0, 500.0), size);
+        assert_eq!(pinned.max, pos2(200.0, 200.0));
+    }
+}
+
 pub fn clamp_rect_to_size(rect: Rect, image_size: Vec2) -> Option<Rect> {
     let bounds = Rect::from_min_size(Pos2::ZERO, image_size);
     let min = pos2(

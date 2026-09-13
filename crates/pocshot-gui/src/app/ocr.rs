@@ -51,7 +51,7 @@ impl PocshotApp {
     /// The currently-selected image region (clamped to the capture), if any.
     /// Used by the region-only setting and by the "OCR this region" toolbar
     /// button.
-    fn current_selection_region(&self) -> Option<Rect> {
+    pub(crate) fn current_selection_region(&self) -> Option<Rect> {
         let capture = self.capture.as_ref()?;
         let rect = self.selection.map(|s| s.rect())?;
         crate::canvas::clamp_image_rect(rect, capture)

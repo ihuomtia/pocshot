@@ -36,6 +36,7 @@ pub fn run() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_title("Pocshot")
             .with_fullscreen(true)
+            .with_transparent(true)
             .with_decorations(false),
         ..Default::default()
     };
@@ -160,6 +161,9 @@ struct PocshotApp {
     selection: Option<ImageSelection>,
     drag_start: Option<Pos2>,
     dragging_handle: Option<HandleType>,
+    /// Active drag-move of an existing selection: pointer anchor (image coords)
+    /// and the selection rect before the move started.
+    moving_selection: Option<(Pos2, Rect)>,
     snap_lines: Option<SnapLines>,
     snap_lines_rx: Option<Receiver<SnapLines>>,
     annotations: AnnotationState,
@@ -220,6 +224,7 @@ impl PocshotApp {
             selection: None,
             drag_start: None,
             dragging_handle: None,
+            moving_selection: None,
             snap_lines: None,
             snap_lines_rx: None,
             annotations: AnnotationState::default(),
@@ -334,6 +339,7 @@ impl PocshotApp {
         self.selection = None;
         self.drag_start = None;
         self.dragging_handle = None;
+        self.moving_selection = None;
         self.show_settings = false;
         self.status.clear();
         let (iw, ih) = (image.width() as f32, image.height() as f32);
@@ -520,6 +526,8 @@ impl PocshotApp {
                 Some(AnnotationTool::Counter)
             } else if pressed(Key::T) {
                 Some(AnnotationTool::HighlightText)
+            } else if pressed(Key::D) {
+                Some(AnnotationTool::Redact)
             } else if pressed(Key::M) {
                 Some(AnnotationTool::Pixelate)
             } else if pressed(Key::B) {
@@ -725,6 +733,17 @@ impl PocshotApp {
 }
 
 impl eframe::App for PocshotApp {
+    /// Keep the window fully transparent until the screenshot texture exists,
+    /// so launching doesn't flash an opaque black fullscreen while the capture
+    /// thread is still running.
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        if self.texture.is_none() {
+            [0.0, 0.0, 0.0, 0.0]
+        } else {
+            self.theme.colors.canvas_bg.to_normalized_gamma_f32()
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.normalize_dpi(ctx);
         self.shortcuts(ctx, frame);
@@ -757,12 +776,30 @@ impl eframe::App for PocshotApp {
         // Keep the annotation text size in sync with the themed default.
         self.annotations.text_size = theme.fonts.annotation_text;
 
+        // While the capture is in flight the whole window must stay transparent
+        // (clear_color alone is not enough: the central panel would otherwise
+        // paint an opaque background over it).
+        let canvas_fill = if self.texture.is_some() {
+            theme.colors.canvas_bg
+        } else {
+            Color32::TRANSPARENT
+        };
+
         egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.fill(theme.colors.canvas_bg))
+            .frame(egui::Frame::NONE.fill(canvas_fill))
             .show(ctx, |ui| {
                 let Some(texture) = self.texture.clone() else {
+                    // Capture in flight: the window is transparent, so draw the
+                    // status on a small opaque pill to keep it readable.
                     ui.centered_and_justified(|ui| {
-                        ui.colored_label(theme.colors.text_primary, &self.status);
+                        egui::Frame::NONE
+                            .fill(theme.colors.settings_bg)
+                            .corner_radius(theme.geometry.settings_radius)
+                            .inner_margin(egui::Margin::symmetric(14, 8))
+                            .stroke(Stroke::new(1.0_f32, theme.colors.box_border))
+                            .show(ui, |ui| {
+                                ui.colored_label(theme.colors.text_primary, &self.status);
+                            });
                     });
                     return;
                 };
@@ -854,6 +891,7 @@ impl eframe::App for PocshotApp {
                         ("H", "Highlight"),
                         ("N", "Number bubble"),
                         ("T", "Text border"),
+                        ("D", "Redact"),
                         ("M", "Pixelate"),
                         ("B", "Blur"),
                         ("E", "Eraser"),
@@ -1034,16 +1072,21 @@ impl eframe::App for PocshotApp {
                                 image_size,
                                 snap_ok,
                             );
-                        } else if self.annotations.active_tool == AnnotationTool::HighlightText {
+                        } else if matches!(
+                            self.annotations.active_tool,
+                            AnnotationTool::HighlightText | AnnotationTool::Redact
+                        ) {
                             canvas_response
                                 .clone()
                                 .on_hover_cursor(CursorIcon::Crosshair);
-                            self.process_text_border_drag(
+                            let filled = self.annotations.active_tool == AnnotationTool::Redact;
+                            self.process_text_region_drag(
                                 &canvas_response,
                                 (horiz_snaps.clone(), vert_snaps.clone()),
                                 draw_rect,
                                 image_size,
                                 snap_ok,
+                                filled,
                             );
                         } else {
                             if self.annotations.active_tool.is_draw_tool() {
@@ -1091,8 +1134,12 @@ impl eframe::App for PocshotApp {
                 }
                 self.draw_annotations(&painter, draw_rect, image_size);
                 self.draw_counter_preview(&painter, draw_rect);
-                if self.annotations.active_tool == AnnotationTool::HighlightText {
-                    self.draw_text_border_preview(&painter, draw_rect, image_size);
+                if matches!(
+                    self.annotations.active_tool,
+                    AnnotationTool::HighlightText | AnnotationTool::Redact
+                ) {
+                    let filled = self.annotations.active_tool == AnnotationTool::Redact;
+                    self.draw_text_region_preview(&painter, draw_rect, image_size, filled);
                 } else {
                     self.draw_effect_preview(&painter, draw_rect, image_size);
                 }

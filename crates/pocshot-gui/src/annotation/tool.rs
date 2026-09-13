@@ -82,9 +82,12 @@ impl ToolKind {
             super::AnnotationTool::Text => {
                 Self::Text(TextTool::new(Pos2::ZERO, String::new(), 18.0))
             }
-            // The text-border tool is handled at the app level (it needs OCR
-            // results); a shape is committed through `AnnotationState::push_rect`.
-            super::AnnotationTool::HighlightText => Self::Select(SelectTool::default()),
+            // The text-border and redact tools are handled at the app level
+            // (they need OCR results); shapes are committed through
+            // `AnnotationState::push_rect`.
+            super::AnnotationTool::HighlightText | super::AnnotationTool::Redact => {
+                Self::Select(SelectTool::default())
+            }
             super::AnnotationTool::Eraser => Self::Eraser(EraserTool::default()),
         }
     }
