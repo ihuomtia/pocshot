@@ -7,7 +7,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::app::PocshotApp;
 use crate::canvas::image_to_screen_rect;
-use crate::platform;
 use crate::toolbar::Action;
 use pocshot_core::{default_output_path, OutputFormat};
 
@@ -157,8 +156,8 @@ impl PocshotApp {
             .arg(y.to_string())
             .arg(w.to_string())
             .arg(h.to_string());
-        platform::quiet_io(&mut cmd);
-        platform::detach(&mut cmd);
+        pocshot_core::quiet_io(&mut cmd);
+        pocshot_core::detach(&mut cmd);
 
         match cmd.spawn() {
             Ok(_) => {

@@ -7,16 +7,21 @@
 //! clamped to the selection (when one exists) and committed as an ordinary
 //! rectangle annotation (undoable).
 
-use eframe::egui::{self, pos2, Pos2, Rect, Stroke, StrokeKind, Vec2};
+use eframe::egui::{self, pos2, Pos2, Rect, Vec2};
 use pocshot_ocr::TextRegion;
 
 use crate::app::PocshotApp;
 use crate::canvas::screen_to_image;
-use crate::snap::{snap_pos, SNAP_DISTANCE};
 
 /// Empty space left between the text and its border, in image pixels. Only
-/// used by the Text border tool — Redact fills the exact text bounding box.
+/// used by the Text border tool — Redact fills the exact text bounding box
+/// (plus [`REDACT_VERTICAL_PADDING`]).
 pub const TEXT_BORDER_PADDING: f32 = 6.0;
+
+/// Extra vertical space for Redact: the filled rectangle is the exact text
+/// bounding box widened by one pixel top and bottom (and nothing sideways), so
+/// antialiased glyph edges are covered without a visible margin.
+pub const REDACT_VERTICAL_PADDING: f32 = 1.0;
 
 /// Union of the OCR regions that intersect `drag`, grown by `padding`, clamped
 /// to the image and — when `selection` is given — restricted to it, so a text
@@ -26,7 +31,7 @@ pub fn text_border_rect(
     drag: Rect,
     regions: &[TextRegion],
     image_size: Vec2,
-    padding: f32,
+    padding: Vec2,
     selection: Option<Rect>,
 ) -> Option<Rect> {
     let mut min = Pos2::new(f32::INFINITY, f32::INFINITY);
@@ -50,12 +55,12 @@ pub fn text_border_rect(
 
     let mut border = Rect::from_min_max(
         pos2(
-            (min.x - padding).clamp(0.0, image_size.x),
-            (min.y - padding).clamp(0.0, image_size.y),
+            (min.x - padding.x).clamp(0.0, image_size.x),
+            (min.y - padding.y).clamp(0.0, image_size.y),
         ),
         pos2(
-            (max.x + padding).clamp(0.0, image_size.x),
-            (max.y + padding).clamp(0.0, image_size.y),
+            (max.x + padding.x).clamp(0.0, image_size.x),
+            (max.y + padding.y).clamp(0.0, image_size.y),
         ),
     );
 
@@ -71,36 +76,25 @@ pub fn text_border_rect(
 
 impl PocshotApp {
     /// `filled` = true for the Redact tool (solid rectangle), false for the
-    /// Text border tool (outline).
+    /// Text border tool (outline). Snapping is deliberately not applied: the
+    /// result is fitted to OCR regions, so guide snapping would only fight it.
     pub(crate) fn process_text_region_drag(
         &mut self,
         response: &egui::Response,
-        snaps: (Vec<f32>, Vec<f32>),
         draw_rect: Rect,
         image_size: Vec2,
-        snap_ok: bool,
         filled: bool,
     ) {
         let screen_to_img = |pos: Pos2| screen_to_image(pos, draw_rect, image_size);
-        let snap = |img_pos: Pos2| -> Pos2 {
-            if snap_ok {
-                pos2(
-                    snap_pos(img_pos.x, &snaps.1, SNAP_DISTANCE),
-                    snap_pos(img_pos.y, &snaps.0, SNAP_DISTANCE),
-                )
-            } else {
-                img_pos
-            }
-        };
 
         if response.drag_started() {
             if let Some(pos) = response.interact_pointer_pos() {
-                self.effect_start = Some(snap(screen_to_img(pos)));
-                self.effect_current = Some(snap(screen_to_img(pos)));
+                self.effect_start = Some(screen_to_img(pos));
+                self.effect_current = Some(screen_to_img(pos));
             }
         } else if response.dragged() {
             if let Some(pos) = response.interact_pointer_pos() {
-                self.effect_current = Some(snap(screen_to_img(pos)));
+                self.effect_current = Some(screen_to_img(pos));
             }
         } else if response.drag_stopped() {
             let (Some(start), Some(cur)) = (self.effect_start, self.effect_current) else {
@@ -116,7 +110,11 @@ impl PocshotApp {
                     drag,
                     &self.ocr_regions,
                     image_size,
-                    if filled { 0.0 } else { TEXT_BORDER_PADDING },
+                    if filled {
+                        Vec2::new(0.0, REDACT_VERTICAL_PADDING)
+                    } else {
+                        Vec2::splat(TEXT_BORDER_PADDING)
+                    },
                     selection,
                 ) {
                     self.annotations.push_rect(border, filled);
@@ -133,36 +131,6 @@ impl PocshotApp {
             }
             self.reset_effect();
         }
-    }
-
-    /// Live preview of the drag rectangle while a text-region tool is active.
-    /// Redact previews as a translucent fill; Text border as an outline.
-    pub(crate) fn draw_text_region_preview(
-        &self,
-        painter: &egui::Painter,
-        draw_rect: Rect,
-        image_size: Vec2,
-        filled: bool,
-    ) {
-        let (Some(start), Some(cur)) = (self.effect_start, self.effect_current) else {
-            return;
-        };
-        let to_screen = |p: Pos2| -> Pos2 {
-            pos2(
-                draw_rect.min.x + p.x / image_size.x * draw_rect.width(),
-                draw_rect.min.y + p.y / image_size.y * draw_rect.height(),
-            )
-        };
-        let rect = Rect::from_two_pos(to_screen(start), to_screen(cur));
-        let color = self.annotations.color;
-        if filled {
-            painter.rect_filled(
-                rect,
-                0.0,
-                egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 90),
-            );
-        }
-        painter.rect_stroke(rect, 0.0, Stroke::new(1.5_f32, color), StrokeKind::Middle);
     }
 }
 
@@ -182,7 +150,14 @@ mod tests {
             region(60.0, 20.0, 90.0, 40.0),
         ];
         let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0));
-        let border = text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0, None).unwrap();
+        let border = text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::splat(6.0),
+            None,
+        )
+        .unwrap();
         assert_eq!(border.min, pos2(4.0, 14.0));
         assert_eq!(border.max, pos2(96.0, 46.0));
     }
@@ -194,7 +169,14 @@ mod tests {
             region(150.0, 150.0, 190.0, 180.0),
         ];
         let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(50.0, 50.0));
-        let border = text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0, None).unwrap();
+        let border = text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::splat(6.0),
+            None,
+        )
+        .unwrap();
         assert_eq!(border.min, pos2(4.0, 4.0));
         assert_eq!(border.max, pos2(46.0, 36.0));
     }
@@ -203,14 +185,28 @@ mod tests {
     fn no_regions_returns_none() {
         let regions = [region(150.0, 150.0, 190.0, 180.0)];
         let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(50.0, 50.0));
-        assert!(text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0, None).is_none());
+        assert!(text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::splat(6.0),
+            None
+        )
+        .is_none());
     }
 
     #[test]
     fn padding_is_clamped_to_the_image() {
         let regions = [region(0.0, 0.0, 5.0, 5.0)];
         let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(10.0, 10.0));
-        let border = text_border_rect(drag, &regions, Vec2::new(200.0, 200.0), 6.0, None).unwrap();
+        let border = text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::splat(6.0),
+            None,
+        )
+        .unwrap();
         assert_eq!(border.min, pos2(0.0, 0.0));
         assert_eq!(border.max, pos2(11.0, 11.0));
     }
@@ -226,7 +222,7 @@ mod tests {
             drag,
             &regions,
             Vec2::new(200.0, 200.0),
-            6.0,
+            Vec2::splat(6.0),
             Some(selection),
         )
         .unwrap();
@@ -242,9 +238,27 @@ mod tests {
             drag,
             &regions,
             Vec2::new(200.0, 200.0),
-            6.0,
+            Vec2::splat(6.0),
             Some(selection)
         )
         .is_none());
+    }
+
+    #[test]
+    fn redact_pads_one_pixel_top_and_bottom_only() {
+        let regions = [region(10.0, 20.0, 90.0, 40.0)];
+        let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0));
+        let redact = text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::new(0.0, REDACT_VERTICAL_PADDING),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            redact,
+            Rect::from_min_max(pos2(10.0, 19.0), pos2(90.0, 41.0))
+        );
     }
 }

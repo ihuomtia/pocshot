@@ -12,9 +12,10 @@ Pocshot uses a single unified binary (`pocshot`) that dispatches to either an in
 
 | Crate | Type | Responsibility |
 |-------|------|----------------|
-| `pocshot-core` | lib | Capture (xcap), save (PNG/JPEG), clipboard (arboard), types, errors |
+| `pocshot-core` | lib | Capture (xcap), save (PNG/JPEG), clipboard (arboard), platform helpers, error dialog, types |
 | `pocshot-snap` | lib | Edge detection and snap line algorithm (imageproc: Sobel → threshold → directional dilate → projection) |
 | `pocshot-gui` | lib | egui/eframe GUI: app, canvas, selection, toolbar, snap helpers, OS window snap (`window_snap`) |
+| `pocshot-tray` | lib | System-tray daemon (`pocshot tray`): tray-rs (`tray` + `tray-menu`) |
 | `pocshot` | bin | Unified binary with clap dispatch |
 
 ## GUI modules (`pocshot-gui`)
@@ -71,7 +72,8 @@ clamped, and windows owned by this process (the GUI itself) are excluded.
 - **Text border** tool (`T`): drag over detected text and a padded rectangular
   border is committed around the union of the OCR regions under the drag
 - **Redact** tool (`D`): same gesture, but commits a solid rectangle in the
-  current annotation color
+  current annotation color, sized to the exact text bounding box plus 1px top
+  and bottom (no side padding)
 - Both text-region tools clamp their result to the active selection, so a text
   box extending past the selection never draws outside it
 - OCR text blocks contribute snap guides only through their outer block borders
@@ -83,6 +85,25 @@ Fatal startup failures (e.g. no usable GPU/OpenGL adapter) are reported through
 `pocshot_core::show_error_dialog`: a native `MessageBoxW` on Windows (where the
 release GUI has no console), stderr elsewhere. `install_panic_dialog_hook`
 routes panics through the same dialog on Windows.
+
+## Tray daemon (`pocshot tray`)
+
+A background process hosting a status icon via tray-rs (`tray` + `tray-menu`):
+native X11 system-tray protocol on Linux and `Shell_NotifyIconW` on Windows.
+The crate pumps its platform event loop on an internal worker thread, so the
+daemon just polls the event channel (no manual Win32 message pump / D-Bus
+service).
+
+- Left click, or the "Take screenshot" menu item, spawns `pocshot gui`
+  detached via `pocshot_core::{detach, quiet_io}`; the GUI exits as usual
+- Right-click popup menu (GTK on Linux, `TrackPopupMenu` on Windows):
+  "Take screenshot" / separator / "Exit" (stops the daemon)
+- The procedural icon (rounded accent square + lens) is generated in code, so
+  there is no binary asset to ship
+- Linux menus need GTK3 (the `gtk` feature); the icon itself needs no toolkit
+- Requires an X11 session / compositor that hosts the legacy XEmbed tray
+  protocol; on pure Wayland (no XWayland tray host) the icon will not appear
+- No single-instance guard: two rapid clicks can spawn two GUIs
 
 ## Future features
 

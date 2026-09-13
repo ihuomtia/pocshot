@@ -7,7 +7,9 @@ pub mod types;
 
 pub use error::{PocshotError, Result};
 pub use notification::send_notification;
-pub use platform::{config_dir, install_panic_dialog_hook, models_dir, show_error_dialog};
+pub use platform::{
+    config_dir, detach, install_panic_dialog_hook, models_dir, quiet_io, show_error_dialog,
+};
 pub use types::{
     CaptureMode, CaptureOptions, CaptureResult, MonitorInfo, OutputFormat, WindowInfo,
 };

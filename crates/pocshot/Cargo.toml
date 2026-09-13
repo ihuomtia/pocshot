@@ -16,4 +16,5 @@ log.workspace = true
 pocshot-core = { path = "../pocshot-core" }
 pocshot-gui = { path = "../pocshot-gui" }
 pocshot-ocr = { path = "../pocshot-ocr" }
+pocshot-tray = { path = "../pocshot-tray" }
 serde_json.workspace = true

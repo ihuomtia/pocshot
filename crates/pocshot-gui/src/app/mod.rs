@@ -1082,10 +1082,8 @@ impl eframe::App for PocshotApp {
                             let filled = self.annotations.active_tool == AnnotationTool::Redact;
                             self.process_text_region_drag(
                                 &canvas_response,
-                                (horiz_snaps.clone(), vert_snaps.clone()),
                                 draw_rect,
                                 image_size,
-                                snap_ok,
                                 filled,
                             );
                         } else {
@@ -1134,15 +1132,7 @@ impl eframe::App for PocshotApp {
                 }
                 self.draw_annotations(&painter, draw_rect, image_size);
                 self.draw_counter_preview(&painter, draw_rect);
-                if matches!(
-                    self.annotations.active_tool,
-                    AnnotationTool::HighlightText | AnnotationTool::Redact
-                ) {
-                    let filled = self.annotations.active_tool == AnnotationTool::Redact;
-                    self.draw_text_region_preview(&painter, draw_rect, image_size, filled);
-                } else {
-                    self.draw_effect_preview(&painter, draw_rect, image_size);
-                }
+                self.draw_effect_preview(&painter, draw_rect, image_size);
                 self.draw_ocr_overlay(&painter, draw_rect, image_size);
                 self.draw_selection_top(ui, &painter, &texture, draw_rect, image_size);
                 self.draw_status_line(&painter, draw_rect, &status);

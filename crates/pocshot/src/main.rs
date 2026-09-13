@@ -28,6 +28,9 @@ enum Command {
     Capture(CaptureArgs),
     /// Show a pinned image snippet in a borderless window
     Pin(PinArgs),
+    /// Run a background tray icon (left click starts a screenshot, right click
+    /// menu has Take screenshot / Exit)
+    Tray,
     /// List available monitors or windows as JSON
     List {
         #[command(subcommand)]
@@ -151,6 +154,15 @@ fn main() -> anyhow::Result<()> {
         }
         Some(Command::Capture(args)) => capture(args),
         Some(Command::Pin(args)) => pin(args),
+        Some(Command::Tray) => {
+            if let Err(e) = pocshot_tray::run() {
+                let message = format!("Pocshot tray failed: {e}");
+                log::error!("{message}");
+                pocshot_core::show_error_dialog(&message);
+                std::process::exit(1);
+            }
+            Ok(())
+        }
         Some(Command::List { target }) => list(target),
         Some(Command::Debug { target }) => match target {
             DebugTarget::Ocr(args) => debug_ocr(args),

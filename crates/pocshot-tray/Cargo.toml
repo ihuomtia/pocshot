@@ -1,0 +1,18 @@
+[package]
+name = "pocshot-tray"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+log.workspace = true
+pocshot-core = { path = "../pocshot-core" }
+
+# tray-rs (the `tray` + `tray-menu` crates): native X11 tray protocol on Linux,
+# Shell_NotifyIconW on Windows. Menus need a toolkit on Linux; GTK3 is used.
+[target.'cfg(target_os = "linux")'.dependencies]
+tray-menu = { workspace = true, features = ["gtk"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+tray-menu = { workspace = true }

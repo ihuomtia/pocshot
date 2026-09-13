@@ -9,6 +9,7 @@
 //! - Linux/other Unix: `$XDG_CONFIG_HOME/pocshot`, else `$HOME/.config/pocshot`
 
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 /// Base directory for Pocshot config and (optionally) models.
 pub fn config_dir() -> PathBuf {
@@ -57,6 +58,30 @@ pub fn models_dir(configured: Option<&str>) -> PathBuf {
         Some(dir) => PathBuf::from(dir),
         None => config_dir().join("models"),
     }
+}
+
+/// Make a spawned child run detached from this process (its own process group
+/// on Unix, detached-process flags on Windows) so it outlives the parent.
+pub fn detach(cmd: &mut Command) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
+    }
+}
+
+/// Discard a child's stdio (it may not have a console).
+pub fn quiet_io(cmd: &mut Command) {
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
 }
 
 /// Show a fatal error to the user.
