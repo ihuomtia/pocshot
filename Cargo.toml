@@ -20,11 +20,11 @@ arboard = "3.6"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4.5", features = ["derive"] }
-eframe = "0.32"
+eframe = { version = "0.32", default-features = false, features = ["default_fonts", "x11"] }
 egui-phosphor = { version = "0.10", features = ["regular", "fill"] }
 env_logger = "0.11"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
-imageproc = "0.27"
+imageproc = { version = "0.27", default-features = false }
 log = "0.4"
 ocrs = "0.12"
 rten = "0.24"
@@ -34,7 +34,19 @@ serde_json = "1.0"
 thiserror = "2.0"
 tray-menu = { version = "0.1.2", default-features = false }
 ureq = "2"
+wgpu = { version = "25", default-features = false }
 xcap = "0.9.8"
+
+# Release build size. `strip` drops the symbol table (the largest single
+# contributor for the cross-compiled Windows GNU exe); fat LTO + one codegen
+# unit let the linker eliminate the maximum dead code from the dependency
+# graph (unused image formats, unused renderer paths, …). Each build flavor
+# compiles exactly one renderer: `gpu` (default) pulls glow/glutin, `software`
+# pulls wgpu. OCR stays fast: opt-level is still 3 for everything.
+[profile.release]
+strip = true
+lto = "fat"
+codegen-units = 1
 
 # Optimize the ML runtime family in debug builds. rten's matmul/conv kernels
 # (rten-gemm, rten-simd, rten-tensor, …) are pathologically slow at

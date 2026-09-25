@@ -51,6 +51,33 @@ cargo build -p pocshot --release
 
 The binary is written to `target/release/pocshot`.
 
+## GPU-less machines (RDP, VMs)
+
+The normal build renders with OpenGL (eframe's glow backend). On Linux that
+still works without a GPU via Mesa's llvmpipe; on Windows a machine with no
+real OpenGL 3.x driver (RDP sessions, GPU-less VMs) only exposes GDI's
+OpenGL 1.1, so the GUI cannot start.
+
+For those machines build the software-rendering flavor (`pocshot-soft`). It
+uses wgpu with a CPU rasterizer (WARP on Windows, lavapipe on Linux), needs no
+extra runtime DLLs (shader compilation falls back from DXC to the bundled FXC
+when DirectX Shader Compiler is absent), and is intentionally slower:
+
+```sh
+just build-soft        # native build -> target/release/pocshot-soft
+just build-win-soft    # cross-compiled -> target/x86_64-pc-windows-gnu/release/pocshot-soft.exe
+```
+
+Without `just`:
+
+```sh
+cargo build --release -p pocshot --no-default-features --features software
+```
+
+Same CLI as the normal build; ship `pocshot-soft` to GPU-less machines and the
+regular `pocshot` everywhere else. The software build also runs on a machine
+with a GPU (it just uses the CPU rasterizer).
+
 ## Project Structure
 
 ```

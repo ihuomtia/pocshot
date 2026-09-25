@@ -19,10 +19,24 @@ build:
 build-debug:
     cargo build -p pocshot
 
+# Release build of the software-rendering flavor (`pocshot-soft`): wgpu + a CPU
+# adapter, no OpenGL. For GPU-less machines (RDP sessions, GPU-less VMs).
+build-soft:
+    cargo build --release -p pocshot --no-default-features --features software
+    cp target/release/pocshot target/release/pocshot-soft
+
 # Cross-compile release .exe for Windows (from Linux)
 [linux]
 build-win:
     {{rustup}} +{{tc}} build --release --target {{win}} -p pocshot
+
+# Cross-compile the software-rendering .exe for Windows (from Linux). The copy
+# keeps `pocshot-soft.exe` around even if a later `build-win` overwrites
+# `pocshot.exe`.
+[linux]
+build-win-soft:
+    {{rustup}} +{{tc}} build --release --target {{win}} -p pocshot --no-default-features --features software
+    cp target/{{win}}/release/pocshot.exe target/{{win}}/release/pocshot-soft.exe
 
 # Cross-compile debug .exe for Windows (from Linux)
 [linux]
@@ -45,4 +59,6 @@ clean-win:
 # Print where the binaries land
 bin:
     @printf 'native:  target/release/pocshot (add .exe on Windows)\n'
+    @printf 'soft:    target/release/pocshot-soft (linux)\n'
     @printf 'windows: target/{{win}}/release/pocshot.exe\n'
+    @printf 'win soft: target/{{win}}/release/pocshot-soft.exe\n'

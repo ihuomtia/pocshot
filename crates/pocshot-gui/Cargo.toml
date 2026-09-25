@@ -4,6 +4,27 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["gpu"]
+# Hardware rendering (the normal build): OpenGL via eframe's glow backend.
+# Still works on GPU-less Linux via Mesa's llvmpipe software OpenGL.
+gpu = ["eframe/glow"]
+# Software-rendering build (`pocshot-soft`): wgpu only, no glutin/GL, with the
+# adapter forced to a CPU rasterizer (WARP on Windows, lavapipe on Linux).
+#
+# The backends must be listed here: eframe's own `wgpu` feature does not pull in
+# `egui-wgpu/default`, and since we disable eframe's default features, wgpu would
+# otherwise be compiled with no native backend at all (runtime panic:
+# "No wgpu backend feature that is implemented for the target platform was
+# enabled").
+software = [
+    "eframe/wgpu",
+    "dep:wgpu",
+    "wgpu/dx12",
+    "wgpu/metal",
+    "wgpu/vulkan",
+]
+
 [dependencies]
 ab_glyph = "0.2"
 eframe.workspace = true
@@ -16,3 +37,5 @@ pocshot-ocr = { path = "../pocshot-ocr" }
 pocshot-snap = { path = "../pocshot-snap" }
 serde.workspace = true
 serde_json.workspace = true
+# Only used to enable the right wgpu backends for the `software` build.
+wgpu = { workspace = true, optional = true }

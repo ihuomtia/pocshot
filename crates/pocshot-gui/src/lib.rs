@@ -5,6 +5,7 @@ mod config;
 mod constrain;
 mod effects;
 mod logging;
+mod renderer;
 mod selection;
 mod snap;
 mod theme;

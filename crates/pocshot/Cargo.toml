@@ -8,13 +8,21 @@ license.workspace = true
 name = "pocshot"
 path = "src/main.rs"
 
+[features]
+default = ["gpu"]
+# Hardware rendering (the normal build).
+gpu = ["pocshot-gui/gpu"]
+# Software-rendering build (`pocshot-soft`): wgpu + a CPU adapter, for machines
+# without a usable GPU/OpenGL (RDP, GPU-less VMs).
+software = ["pocshot-gui/software"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 image.workspace = true
 log.workspace = true
 pocshot-core = { path = "../pocshot-core" }
-pocshot-gui = { path = "../pocshot-gui" }
+pocshot-gui = { path = "../pocshot-gui", default-features = false }
 pocshot-ocr = { path = "../pocshot-ocr" }
 pocshot-tray = { path = "../pocshot-tray" }
 serde_json.workspace = true

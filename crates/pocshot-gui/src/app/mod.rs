@@ -39,14 +39,16 @@ enum AppSource {
 }
 
 fn fullscreen_options() -> eframe::NativeOptions {
-    eframe::NativeOptions {
+    let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Pocshot")
             .with_fullscreen(true)
             .with_transparent(true)
             .with_decorations(false),
         ..Default::default()
-    }
+    };
+    crate::renderer::apply(&mut options);
+    options
 }
 
 pub fn run() -> eframe::Result<()> {
@@ -76,7 +78,7 @@ pub fn run_pin(image_path: PathBuf, x: i32, y: i32, width: u32, height: u32) -> 
     crate::logging::init();
     let size = vec2(width.max(1) as f32, height.max(1) as f32);
     let pos = pos2(x as f32, y as f32);
-    let options = eframe::NativeOptions {
+    let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Pocshot pin")
             .with_decorations(false)
@@ -86,6 +88,7 @@ pub fn run_pin(image_path: PathBuf, x: i32, y: i32, width: u32, height: u32) -> 
             .with_position(pos),
         ..Default::default()
     };
+    crate::renderer::apply(&mut options);
 
     eframe::run_native(
         "Pocshot pin",
