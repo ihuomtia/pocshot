@@ -16,6 +16,11 @@ use pocshot_ocr::SourceImage;
 #[command(name = "pocshot")]
 #[command(about = "Cross-platform screenshots — CLI and interactive GUI")]
 struct Cli {
+    /// Render with the CPU (wgpu) backend instead of OpenGL. Same as
+    /// `POCSHOT_RENDERER=software`; for GPU-less machines (RDP, VMs).
+    #[arg(long, global = true)]
+    software: bool,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -143,6 +148,12 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     pocshot_gui::init_logging();
     pocshot_core::install_panic_dialog_hook();
+    // Wrap the dialog hook: if eframe's OpenGL backend panics on startup,
+    // relaunch with the software renderer instead of showing a crash dialog.
+    pocshot_gui::install_fallback_hook();
+    if cli.software {
+        pocshot_gui::set_software_renderer();
+    }
 
     match cli.command {
         None | Some(Command::Gui) => {

@@ -9,8 +9,10 @@ name = "pocshot"
 path = "src/main.rs"
 
 [features]
-default = ["gpu"]
-# Hardware rendering (the normal build).
+# Both renderers compiled in: one binary that prefers OpenGL and falls back to
+# wgpu + a CPU adapter on machines without it (RDP, GPU-less VMs).
+default = ["gpu", "software"]
+# Hardware rendering (the normal path).
 gpu = ["pocshot-gui/gpu"]
 # Software-rendering build (`pocshot-soft`): wgpu + a CPU adapter, for machines
 # without a usable GPU/OpenGL (RDP, GPU-less VMs).

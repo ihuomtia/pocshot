@@ -53,30 +53,42 @@ The binary is written to `target/release/pocshot`.
 
 ## GPU-less machines (RDP, VMs)
 
-The normal build renders with OpenGL (eframe's glow backend). On Linux that
-still works without a GPU via Mesa's llvmpipe; on Windows a machine with no
-real OpenGL 3.x driver (RDP sessions, GPU-less VMs) only exposes GDI's
-OpenGL 1.1, so the GUI cannot start.
+The default binary carries both of eframe's renderers and picks one at startup:
 
-For those machines build the software-rendering flavor (`pocshot-soft`). It
-uses wgpu with a CPU rasterizer (WARP on Windows, lavapipe on Linux), needs no
-extra runtime DLLs (shader compilation falls back from DXC to the bundled FXC
-when DirectX Shader Compiler is absent), and is intentionally slower:
+- **OpenGL** (eframe's glow backend) when it initializes. On Linux that still
+  works without a GPU via Mesa's llvmpipe; on Windows a machine with no real
+  OpenGL 3.x driver (RDP sessions, GPU-less VMs) only exposes GDI's OpenGL 1.1.
+- **Software** otherwise: wgpu on a CPU rasterizer (WARP on Windows, lavapipe on
+  Linux). It needs no extra runtime DLLs — shader compilation falls back from DXC
+  to the bundled FXC when DirectX Shader Compiler is absent — and is
+  intentionally slower.
+
+The switch is automatic: when OpenGL setup fails, the process relaunches itself
+with the software renderer (`POCSHOT_RENDERER=software`).
+
+To force a renderer:
 
 ```sh
-just build-soft        # native build -> target/release/pocshot-soft
-just build-win-soft    # cross-compiled -> target/x86_64-pc-windows-gnu/release/pocshot-soft.exe
+pocshot --software                  # CPU (wgpu) renderer, any subcommand
+pocshot --software gui              # same, explicit
+POCSHOT_RENDERER=gpu pocshot        # OpenGL only; surface the error if unusable
+POCSHOT_RENDERER=software pocshot   # CPU rasterizer only
 ```
 
-Without `just`:
+The `--software` flag is equivalent to `POCSHOT_RENDERER=software` and takes
+precedence over it. Note: wgpu's CPU path needs a software Vulkan driver —
+`lavapipe` on Linux (Arch: `vulkan-swrast`), WARP on Windows. Without it wgpu
+picks the real GPU.
+
+Slim single-renderer builds (smaller binary, no fallback):
 
 ```sh
+cargo build --release -p pocshot --no-default-features --features gpu
 cargo build --release -p pocshot --no-default-features --features software
 ```
 
-Same CLI as the normal build; ship `pocshot-soft` to GPU-less machines and the
-regular `pocshot` everywhere else. The software build also runs on a machine
-with a GPU (it just uses the CPU rasterizer).
+`just build-soft` and `just build-win-soft` wrap the software-only builds and
+copy the result to `pocshot-soft` / `pocshot-soft.exe`.
 
 ## Project Structure
 

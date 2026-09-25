@@ -5,8 +5,11 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-default = ["gpu"]
-# Hardware rendering (the normal build): OpenGL via eframe's glow backend.
+# Both renderers are compiled in by default so a single binary can pick at
+# runtime: glow (OpenGL) when available, wgpu + a CPU adapter (WARP/lavapipe)
+# when it is not. `POCSHOT_RENDERER=gpu|software` forces one.
+default = ["gpu", "software"]
+# Hardware rendering (the normal path): OpenGL via eframe's glow backend.
 # Still works on GPU-less Linux via Mesa's llvmpipe software OpenGL.
 gpu = ["eframe/glow"]
 # Software-rendering build (`pocshot-soft`): wgpu only, no glutin/GL, with the

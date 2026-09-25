@@ -232,7 +232,9 @@ impl PocshotApp {
                     }
                 }
             }
-            Err(std::sync::mpsc::TryRecvError::Empty) => ctx.request_repaint(),
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                ctx.request_repaint_after(super::WORKER_REPAINT_INTERVAL)
+            }
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 self.ocr_rx = None;
                 self.ocr_running = false;

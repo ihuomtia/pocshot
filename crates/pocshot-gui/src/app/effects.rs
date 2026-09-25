@@ -101,7 +101,9 @@ impl PocshotApp {
                 self.apply_capture_texture(ctx);
                 self.status = "Effect applied".to_string();
             }
-            Err(mpsc::TryRecvError::Empty) => ctx.request_repaint(),
+            Err(mpsc::TryRecvError::Empty) => {
+                ctx.request_repaint_after(super::WORKER_REPAINT_INTERVAL)
+            }
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.effect_rx = None;
                 self.status = "Effect failed".to_string();

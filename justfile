@@ -19,8 +19,9 @@ build:
 build-debug:
     cargo build -p pocshot
 
-# Release build of the software-rendering flavor (`pocshot-soft`): wgpu + a CPU
-# adapter, no OpenGL. For GPU-less machines (RDP sessions, GPU-less VMs).
+# Release build of the software-rendering-only flavor (`pocshot-soft`): wgpu +
+# a CPU adapter, no OpenGL, no runtime fallback. Smaller than the default build
+# (which carries both renderers and falls back automatically).
 build-soft:
     cargo build --release -p pocshot --no-default-features --features software
     cp target/release/pocshot target/release/pocshot-soft
@@ -30,8 +31,8 @@ build-soft:
 build-win:
     {{rustup}} +{{tc}} build --release --target {{win}} -p pocshot
 
-# Cross-compile the software-rendering .exe for Windows (from Linux). The copy
-# keeps `pocshot-soft.exe` around even if a later `build-win` overwrites
+# Cross-compile the software-rendering-only .exe for Windows (from Linux). The
+# copy keeps `pocshot-soft.exe` around even if a later `build-win` overwrites
 # `pocshot.exe`.
 [linux]
 build-win-soft:

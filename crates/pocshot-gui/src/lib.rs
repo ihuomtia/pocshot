@@ -13,6 +13,7 @@ mod toolbar;
 mod window_snap;
 
 pub use app::{run, run_edit, run_pin};
+pub use renderer::{install_fallback_hook, set_software_renderer};
 
 /// Initialize the process-wide logger (used by the `pocshot` CLI too, which
 /// calls into the shared crates).

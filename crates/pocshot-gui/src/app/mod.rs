@@ -18,6 +18,7 @@ use pocshot_snap::{detect_snap_lines, SnapConfig, SnapLines};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::annotation::{AnnotationState, AnnotationTool};
 use crate::canvas::{capture_size, clamp_image_rect, fit_rect, native_rect, screen_to_image};
@@ -25,6 +26,12 @@ use crate::config;
 use crate::selection::{handle_rects, HandleType, ImageSelection};
 use crate::snap::{snap_pos, SNAP_DISTANCE};
 use crate::toolbar::{show_settings_panel, show_toolbar, Action, ToolbarState};
+
+/// Repaint cap while a background worker runs. `request_repaint()` on a
+/// not-yet-ready channel spins full-speed frames; on a CPU renderer (WARP,
+/// llvmpipe) that pegs a core for the whole job. ~60fps keeps status text
+/// smooth while bounding the cost. Input-driven repaints are unaffected.
+pub(crate) const WORKER_REPAINT_INTERVAL: Duration = Duration::from_millis(16);
 
 /// Result of a background screen capture: the image plus its monitor geometry
 /// (needed to map global window coordinates into image coordinates).
@@ -54,11 +61,20 @@ fn fullscreen_options() -> eframe::NativeOptions {
 pub fn run() -> eframe::Result<()> {
     crate::logging::init();
 
-    eframe::run_native(
+    let result = eframe::run_native(
         "Pocshot",
         fullscreen_options(),
         Box::new(|cc| Ok(Box::new(PocshotApp::new(cc, AppSource::Screen)))),
-    )
+    );
+    finalize(result)
+}
+
+/// Relaunch in software mode when startup failed because OpenGL is unusable.
+fn finalize(result: eframe::Result<()>) -> eframe::Result<()> {
+    if let Err(e) = &result {
+        crate::renderer::fallback_on_error(e);
+    }
+    result
 }
 
 /// Open the editor on an image from the clipboard instead of a screen capture.
@@ -67,11 +83,12 @@ pub fn run() -> eframe::Result<()> {
 pub fn run_edit(image: RgbaImage) -> eframe::Result<()> {
     crate::logging::init();
 
-    eframe::run_native(
+    let result = eframe::run_native(
         "Pocshot",
         fullscreen_options(),
         Box::new(move |cc| Ok(Box::new(PocshotApp::new(cc, AppSource::Clipboard(image))))),
-    )
+    );
+    finalize(result)
 }
 
 pub fn run_pin(image_path: PathBuf, x: i32, y: i32, width: u32, height: u32) -> eframe::Result<()> {
@@ -90,11 +107,12 @@ pub fn run_pin(image_path: PathBuf, x: i32, y: i32, width: u32, height: u32) -> 
     };
     crate::renderer::apply(&mut options);
 
-    eframe::run_native(
+    let result = eframe::run_native(
         "Pocshot pin",
         options,
         Box::new(move |cc| Ok(Box::new(PinApp::new(cc, image_path, size, pos)))),
-    )
+    );
+    finalize(result)
 }
 
 // One eframe/wgpu (GL) process per pin. Fine for a handful (<= ~10-15);
@@ -361,7 +379,7 @@ impl PocshotApp {
                 self.capture = None;
                 self.texture = None;
             }
-            Err(mpsc::TryRecvError::Empty) => ctx.request_repaint(),
+            Err(mpsc::TryRecvError::Empty) => ctx.request_repaint_after(WORKER_REPAINT_INTERVAL),
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.capture_rx = None;
             }
@@ -822,7 +840,7 @@ impl eframe::App for PocshotApp {
                 self.snap_lines = Some(sl);
                 self.snap_lines_rx = None;
             } else {
-                ctx.request_repaint();
+                ctx.request_repaint_after(WORKER_REPAINT_INTERVAL);
             }
         }
 

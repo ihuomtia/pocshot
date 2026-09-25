@@ -40,9 +40,10 @@ xcap = "0.9.8"
 # Release build size. `strip` drops the symbol table (the largest single
 # contributor for the cross-compiled Windows GNU exe); fat LTO + one codegen
 # unit let the linker eliminate the maximum dead code from the dependency
-# graph (unused image formats, unused renderer paths, …). Each build flavor
-# compiles exactly one renderer: `gpu` (default) pulls glow/glutin, `software`
-# pulls wgpu. OCR stays fast: opt-level is still 3 for everything.
+# graph (unused image formats, renderer paths not selected at runtime, …).
+# The default build carries both renderers (glow + wgpu) so it can fall back at
+# runtime; the `--no-default-features --features gpu|software` flavors compile
+# exactly one. OCR stays fast: opt-level is still 3 for everything.
 [profile.release]
 strip = true
 lto = "fat"
