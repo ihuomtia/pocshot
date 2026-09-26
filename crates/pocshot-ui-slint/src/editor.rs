@@ -45,7 +45,11 @@ pub struct Editor {
     select_anchor: Pos2,
     selecting: bool,
     counter: u32,
+    /// True while a text annotation is being typed (key events go to the buffer).
+    typing_text: bool,
 }
+
+const TEXT_SIZE: f32 = 24.0;
 
 impl Editor {
     pub fn new(ui: EditorWindow, base: RgbaImage) -> Rc<RefCell<Self>> {
@@ -65,6 +69,7 @@ impl Editor {
             select_anchor: Pos2::ZERO,
             selecting: false,
             counter: 1,
+            typing_text: false,
         }));
 
         {
@@ -118,6 +123,9 @@ impl Editor {
                     self.selection = Rect::from_two_pos(pos, pos);
                 } else if self.tool == ToolKind::Counter {
                     self.current = Some(Shape::begin_counter(pos, self.counter));
+                } else if self.tool == ToolKind::Text {
+                    self.current = Some(Shape::text(pos, "", TEXT_SIZE));
+                    self.typing_text = true;
                 } else if let Some(shape) = Shape::begin(self.tool, pos) {
                     self.current = Some(shape);
                 }
@@ -133,6 +141,8 @@ impl Editor {
                 if self.selecting {
                     self.selecting = false;
                     self.selection = self.selection.intersect(self.image_rect());
+                } else if self.tool == ToolKind::Text {
+                    // Text stays editable until Enter/Esc; mouse-up commits nothing.
                 } else if let Some(shape) = self.current.take() {
                     if shape.kind() == ToolKind::Counter {
                         self.counter += 1;
@@ -154,6 +164,11 @@ impl Editor {
     }
 
     fn on_key(&mut self, text: &str) {
+        if self.typing_text {
+            self.on_text_key(text);
+            return;
+        }
+
         let (ctrl, shift) = platform::query_modifiers();
         let lower = text.to_ascii_lowercase();
 
@@ -197,6 +212,7 @@ impl Editor {
             "h" => self.set_tool(ToolKind::Highlighter),
             "d" => self.set_tool(ToolKind::Redact),
             "n" => self.set_tool(ToolKind::Counter),
+            "t" => self.set_tool(ToolKind::Text),
             "[" => {
                 self.width = (self.width - 1.0).max(1.0);
                 self.refresh_hint();
@@ -215,6 +231,44 @@ impl Editor {
             }
             _ => {}
         }
+    }
+
+    /// Key events while typing a text annotation: Esc cancels, Enter commits,
+    /// Backspace/Delete edits, printable characters append.
+    fn on_text_key(&mut self, text: &str) {
+        match text {
+            "\u{1b}" => {
+                self.current = None;
+                self.typing_text = false;
+            }
+            "\n" | "\u{0d}" => {
+                if let Some(shape) = self.current.take() {
+                    let keep = matches!(&shape, Shape::Text { text, .. } if !text.trim().is_empty());
+                    if keep {
+                        self.annotations.push(Annotation {
+                            shape,
+                            color: self.color,
+                            width: self.width,
+                        });
+                    }
+                    self.rebuild_composited();
+                }
+                self.typing_text = false;
+            }
+            "\u{8}" | "\u{7f}" => {
+                if let Some(Shape::Text { text, .. }) = self.current.as_mut() {
+                    text.pop();
+                }
+            }
+            other if !other.is_empty() && other.chars().all(|c| !c.is_control()) => {
+                if let Some(Shape::Text { text, .. }) = self.current.as_mut() {
+                    text.push_str(other);
+                }
+            }
+            _ => return,
+        }
+        self.refresh_preview();
+        self.refresh_hint();
     }
 
     fn set_tool(&mut self, tool: ToolKind) {
@@ -269,9 +323,15 @@ impl Editor {
     }
 
     fn refresh_hint(&self) {
+        if self.typing_text {
+            self.ui.set_hint(
+                "Type text · Enter commit · Esc cancel · Backspace delete".into(),
+            );
+            return;
+        }
         self.ui.set_hint(
             format!(
-                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · N counter · V select · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
+                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · N counter · T text · V select · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
                 self.tool,
                 self.color_index(),
                 self.width

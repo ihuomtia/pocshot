@@ -11,7 +11,7 @@ Tools (keyboard):
 - `H` highlighter
 - `D` redact (filled rectangle)
 - `N` counter — click drops a numbered bubble, drag extends a callout
-- `T` text (model ready; input wiring pending)
+- `T` text — click, type, Enter commits (`Esc` cancels, Backspace edits)
 
 Colour: keys `1`–`6` pick from the palette.
 Stroke width: `[` decrease, `]` increase (1–24).
