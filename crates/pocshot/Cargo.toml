@@ -11,12 +11,14 @@ path = "src/main.rs"
 [features]
 # Both renderers compiled in: one binary that prefers OpenGL and falls back to
 # wgpu + a CPU adapter on machines without it (RDP, GPU-less VMs).
-default = ["gpu", "software"]
+default = ["gpu", "software", "ui-slint"]
 # Hardware rendering (the normal path).
 gpu = ["pocshot-gui/gpu"]
 # Software-rendering build (`pocshot-soft`): wgpu + a CPU adapter, for machines
 # without a usable GPU/OpenGL (RDP, GPU-less VMs).
 software = ["pocshot-gui/software"]
+# Slint UI (`--ui slint`); the egui UI stays the default during the migration.
+ui-slint = ["dep:pocshot-ui-slint"]
 
 [dependencies]
 anyhow.workspace = true
@@ -27,4 +29,5 @@ pocshot-core = { path = "../pocshot-core" }
 pocshot-gui = { path = "../pocshot-gui", default-features = false }
 pocshot-ocr = { path = "../pocshot-ocr" }
 pocshot-tray = { path = "../pocshot-tray" }
+pocshot-ui-slint = { path = "../pocshot-ui-slint", optional = true }
 serde_json.workspace = true

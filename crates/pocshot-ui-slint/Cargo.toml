@@ -1,0 +1,18 @@
+[package]
+name = "pocshot-ui-slint"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+image.workspace = true
+log.workspace = true
+pocshot-core = { path = "../pocshot-core" }
+slint.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11-dl = "2"
+
+[build-dependencies]
+slint-build.workspace = true

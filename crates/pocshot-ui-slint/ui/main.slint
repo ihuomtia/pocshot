@@ -1,0 +1,112 @@
+//! Pocshot editor window (Slint). M1 slice: fullscreen screenshot, drag-select,
+//! Enter to copy the selection, Esc/q to cancel.
+//!
+//! The window is opaque and shown only after the capture, so the overlay never
+//! appears in the screenshot. Modifier state is queried from the OS (see
+//! `platform.rs`): Slint's winit backend does not track it.
+
+export component EditorWindow inherits Window {
+    in property <image> shot;
+    callback report(string);
+    callback cancel;
+    // Normalised (0..1) selection corner coordinates.
+    callback commit(float, float, float, float);
+    callback mod-ctrl() -> bool;
+    callback mod-shift() -> bool;
+
+    property <length> drag-x0;
+    property <length> drag-y0;
+    property <length> drag-x1;
+    property <length> drag-y1;
+    property <length> dx;
+    property <length> dy;
+    property <length> side;
+    property <bool> dragging;
+    property <bool> ctrl;
+
+    background: #101010;
+    no-frame: true;
+    full-screen: true;
+    title: "Pocshot";
+
+    init => {
+        keys.focus();
+    }
+
+    Image {
+        source: root.shot;
+        width: 100%;
+        height: 100%;
+    }
+
+    Rectangle {
+        visible: root.dragging;
+        x: Math.min(root.drag-x0, root.drag-x1);
+        y: Math.min(root.drag-y0, root.drag-y1);
+        width: Math.abs(root.drag-x1 - root.drag-x0);
+        height: Math.abs(root.drag-y1 - root.drag-y0);
+        background: #00000000;
+        border-color: #ff3366;
+        border-width: 2px;
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            root.ctrl = root.mod-ctrl();
+            if (e.text == "q" || e.text == "\u{1b}") {
+                root.cancel();
+                accept
+            }
+            if (e.text == "\n" || e.text == "\u{0d}" || e.text == " ") {
+                root.commit(
+                    root.drag-x0 / root.width,
+                    root.drag-y0 / root.height,
+                    root.drag-x1 / root.width,
+                    root.drag-y1 / root.height,
+                );
+                accept
+            }
+            root.report("key text='" + e.text + "' ctrl=" + (root.ctrl ? "1" : "0"));
+            accept
+        }
+    }
+
+    ta := TouchArea {
+        init => {
+            // Start with a full-screen selection so Enter alone copies everything.
+            root.drag-x0 = 0;
+            root.drag-y0 = 0;
+            root.drag-x1 = root.width;
+            root.drag-y1 = root.height;
+        }
+
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.drag-x0 = ta.mouse-x;
+                root.drag-y0 = ta.mouse-y;
+                root.drag-x1 = ta.mouse-x;
+                root.drag-y1 = ta.mouse-y;
+                root.dragging = true;
+                root.report("down " + ta.mouse-x / 1px + "," + ta.mouse-y / 1px);
+            }
+            if (e.kind == PointerEventKind.move && root.dragging) {
+                root.ctrl = root.mod-ctrl();
+                root.dx = ta.mouse-x - root.drag-x0;
+                root.dy = ta.mouse-y - root.drag-y0;
+                if (root.ctrl) {
+                    root.side = Math.max(Math.abs(root.dx), Math.abs(root.dy));
+                    root.drag-x1 = root.drag-x0 + (root.dx < 0 ? -root.side : root.side);
+                    root.drag-y1 = root.drag-y0 + (root.dy < 0 ? -root.side : root.side);
+                } else {
+                    root.drag-x1 = ta.mouse-x;
+                    root.drag-y1 = ta.mouse-y;
+                }
+                root.report("move " + ta.mouse-x / 1px + "," + ta.mouse-y / 1px);
+            }
+            if (e.kind == PointerEventKind.up) {
+                root.dragging = false;
+                root.report("up " + ta.mouse-x / 1px + "," + ta.mouse-y / 1px);
+            }
+        }
+    }
+}
