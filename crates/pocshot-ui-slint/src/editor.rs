@@ -31,6 +31,10 @@ pub struct Annotation {
 pub struct Editor {
     ui: EditorWindow,
     base: Rc<RgbaImage>,
+    /// Base image with all committed annotations stamped on. Overlay shown to
+    /// the UI and the source the live preview crops from (so annotations under
+    /// the drag stay visible while dragging).
+    composited: RgbaImage,
     annotations: Vec<Annotation>,
     current: Option<Shape>,
     locked_angle: Option<f32>,
@@ -45,9 +49,11 @@ pub struct Editor {
 impl Editor {
     pub fn new(ui: EditorWindow, base: RgbaImage) -> Rc<RefCell<Self>> {
         let size = Vec2::new(base.width() as f32, base.height() as f32);
+        let composited = base.clone();
         let editor = Rc::new(RefCell::new(Self {
             ui,
             base: Rc::new(base),
+            composited,
             annotations: Vec::new(),
             current: None,
             locked_angle: None,
@@ -76,7 +82,7 @@ impl Editor {
             });
         }
 
-        editor.borrow().refresh_overlay();
+        editor.borrow_mut().rebuild_composited();
         editor.borrow().refresh_selection();
         editor.borrow().refresh_preview();
         editor.borrow().refresh_hint();
@@ -129,7 +135,7 @@ impl Editor {
                         color: self.color,
                         width: self.width,
                     });
-                    self.refresh_overlay();
+                    self.rebuild_composited();
                 }
             }
             _ => {}
@@ -158,7 +164,7 @@ impl Editor {
         }
         if ctrl && lower == "z" {
             self.annotations.pop();
-            self.refresh_overlay();
+            self.rebuild_composited();
             return;
         }
         if ctrl {
@@ -208,10 +214,11 @@ impl Editor {
         self.refresh_hint();
     }
 
-    fn refresh_overlay(&self) {
-        let mut image = (*self.base).clone();
-        render_annotations(&mut image, &self.annotations, Pos2::ZERO);
-        self.ui.set_overlay(to_slint_image(&image));
+    /// Repaint the committed overlay (base + annotations) and publish it.
+    fn rebuild_composited(&mut self) {
+        self.composited = (*self.base).clone();
+        render_annotations(&mut self.composited, &self.annotations, Pos2::ZERO);
+        self.ui.set_overlay(to_slint_image(&self.composited));
     }
 
     fn refresh_preview(&self) {
@@ -232,7 +239,7 @@ impl Editor {
         let y0 = bbox.min.y.floor().max(0.0) as u32;
         let x1 = bbox.max.x.ceil().min(size.x) as u32;
         let y1 = bbox.max.y.ceil().min(size.y) as u32;
-        let mut image = imageops::crop_imm(self.base.as_ref(), x0, y0, x1 - x0, y1 - y0).to_image();
+        let mut image = imageops::crop_imm(&self.composited, x0, y0, x1 - x0, y1 - y0).to_image();
         shape.render(&mut image, self.color, self.width, Pos2::new(x0 as f32, y0 as f32));
 
         self.ui.set_preview(to_slint_image(&image));
