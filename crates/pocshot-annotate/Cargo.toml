@@ -1,0 +1,10 @@
+[package]
+name = "pocshot-annotate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ecolor.workspace = true
+emath.workspace = true
+image.workspace = true

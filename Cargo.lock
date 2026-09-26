@@ -4753,6 +4753,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pocshot-annotate"
+version = "0.1.0"
+dependencies = [
+ "ecolor",
+ "emath",
+ "image",
+]
+
+[[package]]
 name = "pocshot-core"
 version = "0.1.0"
 dependencies = [
