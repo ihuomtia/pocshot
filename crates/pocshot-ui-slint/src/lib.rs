@@ -47,8 +47,9 @@ fn show_editor(image: RgbaImage) -> Result<()> {
 
     let source = Rc::new(image);
     ui.on_commit(move |nx0, ny0, nx1, ny1| {
-        if let Some(selection) = crop_normalized(&source, nx0, ny0, nx1, ny1) {
-            match pocshot_core::copy_rgba_to_clipboard(&selection) {
+        log::info!("commit: normalised ({nx0},{ny0})-({nx1},{ny1})");
+        match crop_normalized(&source, nx0, ny0, nx1, ny1) {
+            Some(selection) => match pocshot_core::copy_rgba_to_clipboard(&selection) {
                 Ok(true) => log::info!(
                     "copied {}x{} selection to clipboard",
                     selection.width(),
@@ -56,11 +57,18 @@ fn show_editor(image: RgbaImage) -> Result<()> {
                 ),
                 Ok(false) => log::warn!("clipboard reported no image copied"),
                 Err(error) => log::error!("failed to copy selection: {error}"),
-            }
-        } else {
-            log::warn!("empty selection, nothing copied");
+            },
+            None => log::warn!("empty selection, nothing copied"),
         }
-        let _ = slint::quit_event_loop();
+        // X11 clipboard data is served by this process; without a clipboard
+        // manager the selection dies with us. Keep the process alive briefly so
+        // a manager (if any) can take ownership.
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+            let _ = slint::invoke_from_event_loop(|| {
+                let _ = slint::quit_event_loop();
+            });
+        });
     });
 
     ui.run().context("Slint event loop failed")

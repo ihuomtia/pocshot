@@ -40,7 +40,7 @@ export component EditorWindow inherits Window {
     }
 
     Rectangle {
-        visible: root.dragging;
+        visible: Math.abs(root.drag-x1 - root.drag-x0) > 0 && Math.abs(root.drag-y1 - root.drag-y0) > 0;
         x: Math.min(root.drag-x0, root.drag-x1);
         y: Math.min(root.drag-y0, root.drag-y1);
         width: Math.abs(root.drag-x1 - root.drag-x0);
@@ -57,7 +57,7 @@ export component EditorWindow inherits Window {
                 root.cancel();
                 accept
             }
-            if (e.text == "\n" || e.text == "\u{0d}" || e.text == " ") {
+            if (e.text == "\n" || e.text == "\u{0d}" || e.text == " " || (root.ctrl && (e.text == "c" || e.text == "C"))) {
                 root.commit(
                     root.drag-x0 / root.width,
                     root.drag-y0 / root.height,
