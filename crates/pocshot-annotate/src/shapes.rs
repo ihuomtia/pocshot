@@ -7,8 +7,21 @@ use emath::{pos2, Pos2, Rect, Vec2};
 use image::RgbaImage;
 
 use crate::constrain::apply_constraint;
-use crate::raster::{dist_to_segment, draw_line_on_image, fill_ellipse_on_image, fill_rect_on_image};
+use crate::counter_font::{
+    contrast_fg, draw_number_on_image, draw_text_on_image, halo_color, measure_text,
+};
+use crate::raster::{
+    dist_to_segment, draw_circle_on_image, draw_line_on_image, fill_circle_on_image,
+    fill_ellipse_on_image, fill_rect_on_image, fill_triangle_on_image,
+};
 use crate::ToolKind;
+
+/// Fixed radius of the numbered counter bubble (independent of stroke width).
+pub const COUNTER_BUBBLE_RADIUS: f32 = 18.0;
+/// Width of the callout triangle base, through the bubble center.
+const COUNTER_CALLOUT_BASE: f32 = 28.0;
+/// Minimum drag distance before a counter drag produces a callout triangle.
+const COUNTER_CALLOUT_THRESHOLD: f32 = 8.0;
 
 #[derive(Debug, Clone)]
 pub enum Shape {
@@ -36,6 +49,17 @@ pub enum Shape {
     },
     Highlighter {
         rect: Rect,
+    },
+    Text {
+        anchor: Pos2,
+        text: String,
+        size: f32,
+    },
+    Counter {
+        center: Pos2,
+        number: u32,
+        target: Option<Pos2>,
+        start: Pos2,
     },
 }
 
@@ -83,6 +107,25 @@ impl Shape {
         })
     }
 
+    /// Start a numbered counter bubble at `pos`.
+    pub fn begin_counter(pos: Pos2, number: u32) -> Self {
+        Shape::Counter {
+            center: pos,
+            number,
+            target: None,
+            start: pos,
+        }
+    }
+
+    /// A text label anchored at `anchor` (top-left).
+    pub fn text(anchor: Pos2, text: impl Into<String>, size: f32) -> Self {
+        Shape::Text {
+            anchor,
+            text: text.into(),
+            size,
+        }
+    }
+
     pub fn kind(&self) -> ToolKind {
         match self {
             Shape::Rectangle { filled: false, .. } => ToolKind::Rectangle,
@@ -93,6 +136,8 @@ impl Shape {
             Shape::Circle { filled: true, .. } => ToolKind::FilledCircle,
             Shape::Pen { .. } => ToolKind::Pen,
             Shape::Highlighter { .. } => ToolKind::Highlighter,
+            Shape::Text { .. } => ToolKind::Text,
+            Shape::Counter { .. } => ToolKind::Counter,
         }
     }
 
@@ -129,6 +174,13 @@ impl Shape {
                 *rect = Rect::from_two_pos(start, r.point);
                 r.locked_angle
             }
+            Shape::Counter { start, target, .. } => {
+                if pos.distance(*start) >= COUNTER_CALLOUT_THRESHOLD {
+                    *target = Some(pos);
+                }
+                None
+            }
+            Shape::Text { .. } => None,
         }
     }
 
@@ -188,6 +240,27 @@ impl Shape {
                     Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 120);
                 fill_rect_on_image(image, rect.min - off, rect.max - off, translucent);
             }
+            Shape::Text { anchor, text, size } => {
+                draw_text_on_image(image, *anchor - off, text, *size, color, halo_color(color));
+            }
+            Shape::Counter {
+                center,
+                number,
+                target,
+                ..
+            } => {
+                let c = *center - off;
+                let radius = COUNTER_BUBBLE_RADIUS;
+                if let Some(tip) = target {
+                    let (a, b, t) = counter_callout_triangle(*center, *tip);
+                    fill_triangle_on_image(image, a - off, b - off, t - off, color);
+                }
+                fill_circle_on_image(image, c, radius, color);
+                // Two-tone rim mirroring the on-canvas look.
+                draw_circle_on_image(image, c, radius, 2.0, Color32::WHITE);
+                draw_circle_on_image(image, c, radius + 2.0, 1.0, Color32::from_rgb(20, 20, 20));
+                draw_number_on_image(image, c, *number, radius, contrast_fg(color));
+            }
         }
     }
 
@@ -229,6 +302,15 @@ impl Shape {
                 .windows(2)
                 .any(|w| dist_to_segment(pos, w[0], w[1]) <= threshold),
             Shape::Highlighter { rect } => rect.contains(pos),
+            Shape::Text { anchor, text, size } => {
+                let (w, h) = measure_text(text, *size);
+                Rect::from_min_size(*anchor, Vec2::new(w, h))
+                    .expand(threshold)
+                    .contains(pos)
+            }
+            Shape::Counter { center, .. } => {
+                pos.distance(*center) <= COUNTER_BUBBLE_RADIUS + threshold
+            }
         }
     }
 
@@ -256,6 +338,24 @@ impl Shape {
                 rect.expand(pad)
             }
             Shape::Highlighter { rect } => rect.expand(1.0),
+            Shape::Text { anchor, text, size } => {
+                let (w, h) = measure_text(text, *size);
+                Rect::from_min_size(*anchor, Vec2::new(w, h)).expand(1.0)
+            }
+            Shape::Counter {
+                center,
+                target,
+                ..
+            } => {
+                let mut rect = Rect::from_center_size(
+                    *center,
+                    Vec2::splat((COUNTER_BUBBLE_RADIUS + 3.0) * 2.0),
+                );
+                if let Some(tip) = target {
+                    rect.extend_with(*tip);
+                }
+                rect.expand(1.0)
+            }
         }
     }
 
@@ -286,8 +386,36 @@ impl Shape {
             Shape::Highlighter { rect } => {
                 (vec![rect.min.y, rect.max.y], vec![rect.min.x, rect.max.x])
             }
+            Shape::Text { anchor, text, size } => {
+                let (w, h) = measure_text(text, *size);
+                (vec![anchor.y, anchor.y + h], vec![anchor.x, anchor.x + w])
+            }
+            Shape::Counter {
+                center,
+                target,
+                ..
+            } => {
+                let mut horiz = vec![center.y];
+                let mut vert = vec![center.x];
+                if let Some(tip) = target {
+                    horiz.push(tip.y);
+                    vert.push(tip.x);
+                }
+                (horiz, vert)
+            }
         }
     }
+}
+
+/// Callout triangle for a counter bubble at `center` pointing at `tip`: the
+/// base passes through the center perpendicular to the direction, apex is tip.
+fn counter_callout_triangle(center: Pos2, tip: Pos2) -> (Pos2, Pos2, Pos2) {
+    let d = tip - center;
+    let len = d.length();
+    let dir = if len > 1e-3 { d / len } else { Vec2::X };
+    let perp = Vec2::new(-dir.y, dir.x);
+    let half = COUNTER_CALLOUT_BASE * 0.5;
+    (center + perp * half, center - perp * half, tip)
 }
 
 fn arrow_head(start: Pos2, end: Pos2, width: f32) -> (Pos2, Pos2, Pos2) {
@@ -342,6 +470,44 @@ mod tests {
             }
             _ => panic!("expected rectangle"),
         }
+    }
+
+    #[test]
+    fn counter_renders_bubble_and_callout() {
+        let mut image = blank(300, 300);
+        let mut shape = Shape::begin_counter(pos2(100.0, 100.0), 7);
+        shape.update(pos2(250.0, 100.0), false, None);
+        shape.render(&mut image, Color32::from_rgb(239, 68, 68), 5.0, Pos2::ZERO);
+        let center = image.get_pixel(100, 100);
+        assert!(center.0[0] > 0, "bubble center should be coloured");
+        let mid = image.get_pixel(175, 100);
+        assert!(mid.0[0] > 0, "callout interior should be coloured");
+    }
+
+    #[test]
+    fn counter_number_increments_externally() {
+        let shape = Shape::begin_counter(pos2(10.0, 10.0), 3);
+        match shape {
+            Shape::Counter { number, .. } => assert_eq!(number, 3),
+            _ => panic!("expected counter"),
+        }
+    }
+
+    #[test]
+    fn text_renders_glyph_pixels() {
+        let mut image = blank(300, 300);
+        let shape = Shape::text(pos2(50.0, 50.0), "Text", 24.0);
+        shape.render(&mut image, Color32::from_rgb(255, 60, 60), 3.0, Pos2::ZERO);
+        let mut coloured = 0u32;
+        for y in 50..100 {
+            for x in 50..200 {
+                let p = image.get_pixel(x, y);
+                if p.0[0] > 30 || p.0[1] > 30 || p.0[2] > 30 {
+                    coloured += 1;
+                }
+            }
+        }
+        assert!(coloured > 0, "expected stamped glyph pixels");
     }
 
     #[test]

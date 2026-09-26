@@ -6,6 +6,7 @@
 //! standalone crates used by egui, not egui itself.
 
 pub mod constrain;
+pub mod counter_font;
 pub mod effects;
 pub mod raster;
 pub mod shapes;

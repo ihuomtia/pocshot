@@ -44,6 +44,7 @@ pub struct Editor {
     selection: Rect,
     select_anchor: Pos2,
     selecting: bool,
+    counter: u32,
 }
 
 impl Editor {
@@ -63,6 +64,7 @@ impl Editor {
             selection: Rect::from_min_size(Pos2::ZERO, size),
             select_anchor: Pos2::ZERO,
             selecting: false,
+            counter: 1,
         }));
 
         {
@@ -114,6 +116,8 @@ impl Editor {
                     self.selecting = true;
                     self.select_anchor = pos;
                     self.selection = Rect::from_two_pos(pos, pos);
+                } else if self.tool == ToolKind::Counter {
+                    self.current = Some(Shape::begin_counter(pos, self.counter));
                 } else if let Some(shape) = Shape::begin(self.tool, pos) {
                     self.current = Some(shape);
                 }
@@ -130,6 +134,9 @@ impl Editor {
                     self.selecting = false;
                     self.selection = self.selection.intersect(self.image_rect());
                 } else if let Some(shape) = self.current.take() {
+                    if shape.kind() == ToolKind::Counter {
+                        self.counter += 1;
+                    }
                     self.annotations.push(Annotation {
                         shape,
                         color: self.color,
@@ -189,6 +196,7 @@ impl Editor {
             "p" => self.set_tool(ToolKind::Pen),
             "h" => self.set_tool(ToolKind::Highlighter),
             "d" => self.set_tool(ToolKind::Redact),
+            "n" => self.set_tool(ToolKind::Counter),
             "[" => {
                 self.width = (self.width - 1.0).max(1.0);
                 self.refresh_hint();
@@ -263,7 +271,7 @@ impl Editor {
     fn refresh_hint(&self) {
         self.ui.set_hint(
             format!(
-                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · V select · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
+                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · N counter · V select · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
                 self.tool,
                 self.color_index(),
                 self.width
