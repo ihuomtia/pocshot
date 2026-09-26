@@ -46,8 +46,8 @@ fn show_editor(image: RgbaImage) -> Result<()> {
     });
 
     let source = Rc::new(image);
+    let save_source = source.clone();
     ui.on_commit(move |nx0, ny0, nx1, ny1| {
-        log::info!("commit: normalised ({nx0},{ny0})-({nx1},{ny1})");
         match crop_normalized(&source, nx0, ny0, nx1, ny1) {
             Some(selection) => match pocshot_core::copy_rgba_to_clipboard(&selection) {
                 Ok(true) => log::info!(
@@ -60,18 +60,41 @@ fn show_editor(image: RgbaImage) -> Result<()> {
             },
             None => log::warn!("empty selection, nothing copied"),
         }
-        // X11 clipboard data is served by this process; without a clipboard
-        // manager the selection dies with us. Keep the process alive briefly so
-        // a manager (if any) can take ownership.
-        std::thread::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_millis(1000));
-            let _ = slint::invoke_from_event_loop(|| {
-                let _ = slint::quit_event_loop();
-            });
-        });
+        quit_after_grace();
+    });
+
+    ui.on_save(move |nx0, ny0, nx1, ny1| {
+        match crop_normalized(&save_source, nx0, ny0, nx1, ny1) {
+            Some(selection) => {
+                let path = pocshot_core::default_output_path(pocshot_core::OutputFormat::Png);
+                match pocshot_core::save_rgba(
+                    &selection,
+                    &path,
+                    pocshot_core::OutputFormat::Png,
+                    90,
+                ) {
+                    Ok(()) => log::info!("saved {} ({}x{})", path.display(), selection.width(), selection.height()),
+                    Err(error) => log::error!("failed to save {}: {error}", path.display()),
+                }
+            }
+            None => log::warn!("empty selection, nothing saved"),
+        }
+        let _ = slint::quit_event_loop();
     });
 
     ui.run().context("Slint event loop failed")
+}
+
+/// Quit shortly after an action. X11 clipboard data is served by this process;
+/// without a clipboard manager the selection dies with us, so give arboard a
+/// moment to hand it over before exiting.
+fn quit_after_grace() {
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+        let _ = slint::invoke_from_event_loop(|| {
+            let _ = slint::quit_event_loop();
+        });
+    });
 }
 
 fn to_slint_image(image: &RgbaImage) -> Image {
