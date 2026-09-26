@@ -1,0 +1,107 @@
+//! M0 spike: transparent fullscreen borderless window showing a pixel-buffer
+//! image, with pointer-drag selection and modifier-key reporting.
+//! Throwaway — delete once M0 is answered.
+
+export component SpikeWindow inherits Window {
+    in property <image> shot;
+    callback report(string);
+    callback quit;
+    // Modifier state is queried from the OS: Slint's winit backend does not
+    // track modifiers (PointerEvent/KeyEvent .modifiers stay false).
+    callback mod-ctrl() -> bool;
+    callback mod-shift() -> bool;
+
+    property <length> drag-x0;
+    property <length> drag-y0;
+    property <length> drag-x1;
+    property <length> drag-y1;
+    property <length> dx;
+    property <length> dy;
+    property <length> side;
+    property <bool> dragging;
+    property <bool> ctrl;
+    property <bool> shift;
+
+    background: transparent;
+    no-frame: true;
+    always-on-top: true;
+    full-screen: true;
+    title: "spike-slint";
+
+    init => {
+        keys.focus();
+    }
+
+    Image {
+        source: root.shot;
+        width: 100%;
+        height: 100%;
+    }
+
+    Rectangle {
+        visible: root.dragging;
+        x: Math.min(root.drag-x0, root.drag-x1);
+        y: Math.min(root.drag-y0, root.drag-y1);
+        width: Math.abs(root.drag-x1 - root.drag-x0);
+        height: Math.abs(root.drag-y1 - root.drag-y0);
+        background: #00000000;
+        border-color: #ff3366;
+        border-width: 2px;
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            root.ctrl = root.mod-ctrl();
+            root.shift = root.mod-shift();
+            if (e.text == "q" || e.text == "\u{1b}") {
+                root.quit();
+                accept
+            }
+            root.report("key text='" + e.text + "' ctrl=" + (root.ctrl ? "1" : "0") + " shift=" + (root.shift ? "1" : "0"));
+            accept
+        }
+        key-released(e) => {
+            root.ctrl = root.mod-ctrl();
+            root.shift = root.mod-shift();
+            root.report("key-up text='" + e.text + "' ctrl=" + (root.ctrl ? "1" : "0") + " shift=" + (root.shift ? "1" : "0"));
+            accept
+        }
+    }
+
+    ta := TouchArea {
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.ctrl = root.mod-ctrl();
+                root.shift = root.mod-shift();
+                root.drag-x0 = ta.mouse-x;
+                root.drag-y0 = ta.mouse-y;
+                root.drag-x1 = ta.mouse-x;
+                root.drag-y1 = ta.mouse-y;
+                root.dragging = true;
+                root.report("down " + ta.mouse-x / 1px + "," + ta.mouse-y / 1px + (root.ctrl ? " ctrl" : "") + (root.shift ? " shift" : ""));
+            }
+            if (e.kind == PointerEventKind.move && root.dragging) {
+                root.ctrl = root.mod-ctrl();
+                root.shift = root.mod-shift();
+                root.dx = ta.mouse-x - root.drag-x0;
+                root.dy = ta.mouse-y - root.drag-y0;
+                if (root.ctrl) {
+                    // Ctrl constrains the drag to a square (dominant axis).
+                    root.side = Math.max(Math.abs(root.dx), Math.abs(root.dy));
+                    root.drag-x1 = root.drag-x0 + (root.dx < 0 ? -root.side : root.side);
+                    root.drag-y1 = root.drag-y0 + (root.dy < 0 ? -root.side : root.side);
+                } else {
+                    root.drag-x1 = ta.mouse-x;
+                    root.drag-y1 = ta.mouse-y;
+                }
+                root.report("move " + ta.mouse-x / 1px + "," + ta.mouse-y / 1px + " mctrl=" + (root.ctrl ? "1" : "0") + " mshift=" + (root.shift ? "1" : "0"));
+            }
+            if (e.kind == PointerEventKind.up) {
+                root.dragging = false;
+                root.ctrl = root.mod-ctrl();
+                root.shift = root.mod-shift();
+                root.report("up " + ta.mouse-x / 1px + "," + ta.mouse-y / 1px + (root.ctrl ? " ctrl" : "") + (root.shift ? " shift" : ""));
+            }
+        }
+    }
+}
