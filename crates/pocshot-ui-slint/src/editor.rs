@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use image::{imageops, RgbaImage};
-use pocshot_annotate::{Color32, Pos2, Rect, Shape, ToolKind, Vec2};
+use pocshot_annotate::{effects, Color32, Pos2, Rect, Shape, ToolKind, Vec2};
 use slint::{ComponentHandle as _, Image, Rgba8Pixel, SharedPixelBuffer};
 
 use crate::platform;
@@ -22,10 +22,17 @@ const PALETTE: [Color32; 6] = [
     Color32::from_rgb(0xff, 0x2d, 0x95),
 ];
 
+#[derive(Clone)]
 pub struct Annotation {
     pub shape: Shape,
     pub color: Color32,
     pub width: f32,
+}
+
+/// Snapshot for undo: the base image plus the committed annotations.
+struct HistoryEntry {
+    base: Rc<RgbaImage>,
+    annotations: Vec<Annotation>,
 }
 
 pub struct Editor {
@@ -47,6 +54,11 @@ pub struct Editor {
     counter: u32,
     /// True while a text annotation is being typed (key events go to the buffer).
     typing_text: bool,
+    /// Undo snapshots (base + annotations), newest last.
+    history: Vec<HistoryEntry>,
+    /// In-progress blur/pixelate region (image pixels).
+    effect_anchor: Pos2,
+    effect_rect: Option<Rect>,
 }
 
 const TEXT_SIZE: f32 = 24.0;
@@ -70,6 +82,9 @@ impl Editor {
             selecting: false,
             counter: 1,
             typing_text: false,
+            history: Vec::new(),
+            effect_anchor: Pos2::ZERO,
+            effect_rect: None,
         }));
 
         {
@@ -126,6 +141,9 @@ impl Editor {
                 } else if self.tool == ToolKind::Text {
                     self.current = Some(Shape::text(pos, "", TEXT_SIZE));
                     self.typing_text = true;
+                } else if self.tool == ToolKind::Blur || self.tool == ToolKind::Pixelate {
+                    self.effect_anchor = pos;
+                    self.effect_rect = Some(Rect::from_two_pos(pos, pos));
                 } else if let Some(shape) = Shape::begin(self.tool, pos) {
                     self.current = Some(shape);
                 }
@@ -133,6 +151,8 @@ impl Editor {
             1 => {
                 if self.selecting {
                     self.selection = Rect::from_two_pos(self.select_anchor, pos);
+                } else if self.effect_rect.is_some() {
+                    self.effect_rect = Some(Rect::from_two_pos(self.effect_anchor, pos));
                 } else if let Some(shape) = self.current.as_mut() {
                     self.locked_angle = shape.update(pos, ctrl, self.locked_angle);
                 }
@@ -141,12 +161,15 @@ impl Editor {
                 if self.selecting {
                     self.selecting = false;
                     self.selection = self.selection.intersect(self.image_rect());
+                } else if let Some(rect) = self.effect_rect.take() {
+                    self.apply_effect(rect);
                 } else if self.tool == ToolKind::Text {
                     // Text stays editable until Enter/Esc; mouse-up commits nothing.
                 } else if let Some(shape) = self.current.take() {
                     if shape.kind() == ToolKind::Counter {
                         self.counter += 1;
                     }
+                    self.history.push(self.snapshot());
                     self.annotations.push(Annotation {
                         shape,
                         color: self.color,
@@ -185,8 +208,7 @@ impl Editor {
             return;
         }
         if ctrl && lower == "z" {
-            self.annotations.pop();
-            self.rebuild_composited();
+            self.undo();
             return;
         }
         if ctrl {
@@ -213,6 +235,8 @@ impl Editor {
             "d" => self.set_tool(ToolKind::Redact),
             "n" => self.set_tool(ToolKind::Counter),
             "t" => self.set_tool(ToolKind::Text),
+            "b" => self.set_tool(ToolKind::Blur),
+            "m" => self.set_tool(ToolKind::Pixelate),
             "[" => {
                 self.width = (self.width - 1.0).max(1.0);
                 self.refresh_hint();
@@ -245,6 +269,7 @@ impl Editor {
                 if let Some(shape) = self.current.take() {
                     let keep = matches!(&shape, Shape::Text { text, .. } if !text.trim().is_empty());
                     if keep {
+                        self.history.push(self.snapshot());
                         self.annotations.push(Annotation {
                             shape,
                             color: self.color,
@@ -283,7 +308,65 @@ impl Editor {
         self.ui.set_overlay(to_slint_image(&self.composited));
     }
 
+    fn snapshot(&self) -> HistoryEntry {
+        HistoryEntry {
+            base: self.base.clone(),
+            annotations: self.annotations.clone(),
+        }
+    }
+
+    /// Restore the previous base/annotations snapshot.
+    fn undo(&mut self) {
+        if let Some(entry) = self.history.pop() {
+            self.base = entry.base;
+            self.annotations = entry.annotations;
+            self.rebuild_composited();
+            self.refresh_preview();
+        }
+    }
+
+    /// Apply the current destructive tool to `rect` (image pixels).
+    fn apply_effect(&mut self, rect: Rect) {
+        let rect = rect.intersect(self.image_rect());
+        if rect.width() < 1.0 || rect.height() < 1.0 {
+            return;
+        }
+        let tool = self.tool;
+        self.history.push(self.snapshot());
+        let base = Rc::make_mut(&mut self.base);
+        match tool {
+            ToolKind::Pixelate => effects::pixelate_region(base, rect, 16),
+            ToolKind::Blur => effects::blur_region(base, rect, 12.0),
+            _ => {}
+        }
+        self.rebuild_composited();
+    }
+
     fn refresh_preview(&self) {
+        if let Some(rect) = self.effect_rect {
+            let size = self.size();
+            let bbox = rect.intersect(self.image_rect());
+            if bbox.width() < 1.0 || bbox.height() < 1.0 {
+                self.ui.set_preview_visible(false);
+                return;
+            }
+            let x0 = bbox.min.x.floor().max(0.0) as u32;
+            let y0 = bbox.min.y.floor().max(0.0) as u32;
+            let x1 = bbox.max.x.ceil().min(size.x) as u32;
+            let y1 = bbox.max.y.ceil().min(size.y) as u32;
+            let mut image =
+                imageops::crop_imm(&self.composited, x0, y0, x1 - x0, y1 - y0).to_image();
+            // Tint the region so the effect target is obvious.
+            pocshot_annotate::raster::fill_rect_on_image(
+                &mut image,
+                Pos2::ZERO,
+                Pos2::new((x1 - x0) as f32, (y1 - y0) as f32),
+                Color32::from_rgba_unmultiplied(255, 51, 102, 70),
+            );
+            self.publish_preview(image, x0, y0, x1, y1);
+            return;
+        }
+
         let Some(shape) = self.current.as_ref() else {
             self.ui.set_preview_visible(false);
             return;
@@ -304,6 +387,11 @@ impl Editor {
         let mut image = imageops::crop_imm(&self.composited, x0, y0, x1 - x0, y1 - y0).to_image();
         shape.render(&mut image, self.color, self.width, Pos2::new(x0 as f32, y0 as f32));
 
+        self.publish_preview(image, x0, y0, x1, y1);
+    }
+
+    fn publish_preview(&self, image: RgbaImage, x0: u32, y0: u32, x1: u32, y1: u32) {
+        let size = self.size();
         self.ui.set_preview(to_slint_image(&image));
         self.ui.set_preview_nx(x0 as f32 / size.x);
         self.ui.set_preview_ny(y0 as f32 / size.y);
@@ -331,7 +419,7 @@ impl Editor {
         }
         self.ui.set_hint(
             format!(
-                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · N counter · T text · V select · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
+                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · N counter · T text · B blur · M pixelate · V select · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
                 self.tool,
                 self.color_index(),
                 self.width

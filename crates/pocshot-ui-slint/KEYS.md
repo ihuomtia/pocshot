@@ -12,6 +12,8 @@ Tools (keyboard):
 - `D` redact (filled rectangle)
 - `N` counter — click drops a numbered bubble, drag extends a callout
 - `T` text — click, type, Enter commits (`Esc` cancels, Backspace edits)
+- `B` blur, `M` pixelate — drag a region; applied on release (destructive)
+- `Ctrl+Z` undoes the last annotation or effect
 
 Colour: keys `1`–`6` pick from the palette.
 Stroke width: `[` decrease, `]` increase (1–24).
