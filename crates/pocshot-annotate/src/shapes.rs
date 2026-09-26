@@ -232,6 +232,33 @@ impl Shape {
         }
     }
 
+    /// Bounding box of the rendered shape, padded for stroke width (and the
+    /// arrow head). Used to size the live-preview image.
+    pub fn bounds(&self, width: f32) -> Rect {
+        let pad = width + 1.0;
+        match self {
+            Shape::Rectangle { rect, .. } => rect.expand(pad),
+            Shape::Line { start, end } => Rect::from_two_pos(*start, *end).expand(pad),
+            Shape::Arrow { start, end } => {
+                Rect::from_two_pos(*start, *end).expand(12.0 + width * 1.5 + 6.0 + width)
+            }
+            Shape::Circle { center, radius, .. } => {
+                Rect::from_center_size(*center, *radius * 2.0).expand(pad)
+            }
+            Shape::Pen { points, .. } => {
+                let mut rect = Rect::NOTHING;
+                for p in points {
+                    rect.extend_with(*p);
+                }
+                if rect == Rect::NOTHING {
+                    rect = Rect::from_min_size(Pos2::ZERO, Vec2::ZERO);
+                }
+                rect.expand(pad)
+            }
+            Shape::Highlighter { rect } => rect.expand(1.0),
+        }
+    }
+
     pub fn snap_lines(&self) -> (Vec<f32>, Vec<f32>) {
         match self {
             Shape::Rectangle { rect, .. } => {
@@ -315,6 +342,15 @@ mod tests {
             }
             _ => panic!("expected rectangle"),
         }
+    }
+
+    #[test]
+    fn bounds_cover_the_shape_and_pad() {
+        let mut shape = Shape::begin(ToolKind::Rectangle, pos2(10.0, 10.0)).unwrap();
+        shape.update(pos2(30.0, 40.0), false, None);
+        let b = shape.bounds(2.0);
+        assert!(b.min.x <= 7.0 && b.min.y <= 7.0);
+        assert!(b.max.x >= 33.0 && b.max.y >= 43.0);
     }
 
     #[test]

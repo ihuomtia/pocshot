@@ -1,30 +1,29 @@
-//! Pocshot editor window (Slint). M1 slice: fullscreen screenshot, drag-select,
-//! Enter to copy the selection, Esc/q to cancel.
-//!
-//! The window is opaque and shown only after the capture, so the overlay never
-//! appears in the screenshot. Modifier state is queried from the OS (see
-//! `platform.rs`): Slint's winit backend does not track it.
+//! Pocshot editor window (Slint). The view is deliberately dumb: it shows the
+//! captured image, a committed-annotations overlay, a live preview image and
+//! the selection rectangle, and forwards pointer/key events to Rust. All
+//! editing logic lives in `lib.rs`, so it is toolkit-independent and testable.
 
 export component EditorWindow inherits Window {
     in property <image> shot;
-    callback report(string);
-    callback cancel;
-    // Normalised (0..1) selection corner coordinates.
-    callback commit(float, float, float, float);
-    // Normalised (0..1) selection corner coordinates, saved to disk.
-    callback save(float, float, float, float);
-    callback mod-ctrl() -> bool;
-    callback mod-shift() -> bool;
+    in property <image> overlay;
+    in property <image> preview;
+    // Normalised (0..1) preview rectangle.
+    in property <float> preview-nx;
+    in property <float> preview-ny;
+    in property <float> preview-nw;
+    in property <float> preview-nh;
+    in property <bool> preview-visible;
+    // Normalised selection rectangle.
+    in property <float> sel-nx;
+    in property <float> sel-ny;
+    in property <float> sel-nw;
+    in property <float> sel-nh;
+    in property <bool> sel-visible;
+    in property <string> hint;
 
-    property <length> drag-x0;
-    property <length> drag-y0;
-    property <length> drag-x1;
-    property <length> drag-y1;
-    property <length> dx;
-    property <length> dy;
-    property <length> side;
-    property <bool> dragging;
-    property <bool> ctrl;
+    // phase: 0 = down, 1 = move, 2 = up. Coordinates are normalised 0..1.
+    callback pointer(float, float, int);
+    callback key(string);
 
     background: #101010;
     no-frame: true;
@@ -37,16 +36,35 @@ export component EditorWindow inherits Window {
 
     Image {
         source: root.shot;
+        x: 0;
+        y: 0;
         width: 100%;
         height: 100%;
     }
 
+    Image {
+        source: root.overlay;
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    Image {
+        visible: root.preview-visible;
+        source: root.preview;
+        x: root.preview-nx * root.width;
+        y: root.preview-ny * root.height;
+        width: root.preview-nw * root.width;
+        height: root.preview-nh * root.height;
+    }
+
     Rectangle {
-        visible: Math.abs(root.drag-x1 - root.drag-x0) > 0 && Math.abs(root.drag-y1 - root.drag-y0) > 0;
-        x: Math.min(root.drag-x0, root.drag-x1);
-        y: Math.min(root.drag-y0, root.drag-y1);
-        width: Math.abs(root.drag-x1 - root.drag-x0);
-        height: Math.abs(root.drag-y1 - root.drag-y0);
+        visible: root.sel-visible;
+        x: root.sel-nx * root.width;
+        y: root.sel-ny * root.height;
+        width: root.sel-nw * root.width;
+        height: root.sel-nh * root.height;
         background: #00000000;
         border-color: #ff3366;
         border-width: 2px;
@@ -68,74 +86,26 @@ export component EditorWindow inherits Window {
         vertical-alignment: center;
         color: #ffffffdd;
         font-size: 14px;
-        text: "Drag to select   Ctrl: square   Enter / Ctrl+C: copy   Ctrl+S: save   Esc / q: cancel";
+        text: root.hint;
     }
 
     keys := FocusScope {
         key-pressed(e) => {
-            root.ctrl = root.mod-ctrl();
-            if (e.text == "q" || e.text == "\u{1b}") {
-                root.cancel();
-                accept
-            }
-            if (e.text == "\n" || e.text == "\u{0d}" || e.text == " " || (root.ctrl && (e.text == "c" || e.text == "C"))) {
-                root.commit(
-                    root.drag-x0 / root.width,
-                    root.drag-y0 / root.height,
-                    root.drag-x1 / root.width,
-                    root.drag-y1 / root.height,
-                );
-                accept
-            }
-            if (root.ctrl && (e.text == "s" || e.text == "S")) {
-                root.save(
-                    root.drag-x0 / root.width,
-                    root.drag-y0 / root.height,
-                    root.drag-x1 / root.width,
-                    root.drag-y1 / root.height,
-                );
-                accept
-            }
-            root.report("key text='" + e.text + "' ctrl=" + (root.ctrl ? "1" : "0"));
+            root.key(e.text);
             accept
         }
     }
 
     ta := TouchArea {
-        init => {
-            // Start with a full-screen selection so Enter alone copies everything.
-            root.drag-x0 = 0;
-            root.drag-y0 = 0;
-            root.drag-x1 = root.width;
-            root.drag-y1 = root.height;
-        }
-
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
-                root.drag-x0 = ta.mouse-x;
-                root.drag-y0 = ta.mouse-y;
-                root.drag-x1 = ta.mouse-x;
-                root.drag-y1 = ta.mouse-y;
-                root.dragging = true;
-                root.report("down " + ta.mouse-x / 1px + "," + ta.mouse-y / 1px);
+                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 0);
             }
-            if (e.kind == PointerEventKind.move && root.dragging) {
-                root.ctrl = root.mod-ctrl();
-                root.dx = ta.mouse-x - root.drag-x0;
-                root.dy = ta.mouse-y - root.drag-y0;
-                if (root.ctrl) {
-                    root.side = Math.max(Math.abs(root.dx), Math.abs(root.dy));
-                    root.drag-x1 = root.drag-x0 + (root.dx < 0 ? -root.side : root.side);
-                    root.drag-y1 = root.drag-y0 + (root.dy < 0 ? -root.side : root.side);
-                } else {
-                    root.drag-x1 = ta.mouse-x;
-                    root.drag-y1 = ta.mouse-y;
-                }
-                root.report("move " + ta.mouse-x / 1px + "," + ta.mouse-y / 1px);
+            if (e.kind == PointerEventKind.move) {
+                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 1);
             }
             if (e.kind == PointerEventKind.up) {
-                root.dragging = false;
-                root.report("up " + ta.mouse-x / 1px + "," + ta.mouse-y / 1px);
+                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 2);
             }
         }
     }

@@ -4831,6 +4831,7 @@ dependencies = [
  "anyhow",
  "image",
  "log",
+ "pocshot-annotate",
  "pocshot-core",
  "slint",
  "slint-build",

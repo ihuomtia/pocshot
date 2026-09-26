@@ -13,4 +13,5 @@ pub mod tool_kind;
 
 pub use ecolor::Color32;
 pub use emath::{pos2, vec2, Pos2, Rect, Vec2};
+pub use shapes::Shape;
 pub use tool_kind::ToolKind;
