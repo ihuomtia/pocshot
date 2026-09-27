@@ -37,6 +37,7 @@ impl PocshotApp {
                         log::warn!("text detection disabled: {e:#}");
                         self.status = format!("Text detection disabled: {e}");
                         self.ocr_enabled = false;
+                        self.persist_settings();
                     }
                 }
             }
@@ -44,6 +45,7 @@ impl PocshotApp {
                 log::warn!("text detection disabled (model download failed): {e:#}");
                 self.status = format!("Text detection disabled: {e}");
                 self.ocr_enabled = false;
+                self.persist_settings();
             }
         }
     }
