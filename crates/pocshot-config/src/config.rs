@@ -32,6 +32,9 @@ pub struct AppSettings {
     /// saving. Absent in older configs -> false.
     #[serde(default)]
     pub copy_on_save: bool,
+    /// Stroke width for new annotations (shared by both UIs).
+    #[serde(default = "default_stroke_width")]
+    pub annotation_stroke_width: f32,
     /// Debug: restrict OCR text detection to the currently-selected region
     /// rather than the whole capture. Results are still shown at full-capture
     /// coordinates.
@@ -54,10 +57,15 @@ impl Default for AppSettings {
             snap_enabled: true,
             show_snap_lines: true,
             copy_on_save: false,
+            annotation_stroke_width: default_stroke_width(),
             ocr_region_only: false,
             theme: Theme::builtin(),
         }
     }
+}
+
+fn default_stroke_width() -> f32 {
+    3.0
 }
 
 /// Directory used for config and (optionally) the bundled model file.

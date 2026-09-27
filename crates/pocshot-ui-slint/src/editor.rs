@@ -99,6 +99,8 @@ pub struct Editor {
     palette: [Color32; 6],
     ocr_confidence: f32,
     help_visible: bool,
+    /// Transient status message shown in the hint bar.
+    status: Option<String>,
 }
 
 /// Padding around detected text regions for the highlight-text tool.
@@ -178,6 +180,7 @@ impl Editor {
         let copy_on_save = settings.copy_on_save;
         let snap_enabled = settings.snap_enabled;
         let ocr_confidence = settings.ocr_confidence;
+        let initial_width = settings.annotation_stroke_width.clamp(1.0, 24.0);
         let default_color = settings.theme.colors.default_annotation_color;
         let mut palette = PALETTE;
         for (index, color) in settings
@@ -201,7 +204,7 @@ impl Editor {
             locked_angle: None,
             tool: ToolKind::Select,
             color: default_color,
-            width: 3.0,
+            width: initial_width,
             selection: Rect::from_min_size(Pos2::ZERO, size),
             select_anchor: Pos2::ZERO,
             selecting: false,
@@ -233,6 +236,7 @@ impl Editor {
             palette,
             ocr_confidence: ocr_confidence.clamp(0.1, 0.95),
             help_visible: false,
+            status: None,
         }));
 
         {
@@ -432,6 +436,7 @@ impl Editor {
         if self.pointer_in_toolbar(ny) {
             return;
         }
+        self.status = None;
         let (ctrl, shift) = platform::query_modifiers();
         let raw = self.norm_to_image(nx, ny);
         self.refresh_layout();
@@ -567,10 +572,14 @@ impl Editor {
         match action {
             "width-" => {
                 self.width = (self.width - 1.0).max(1.0);
+                self.settings.annotation_stroke_width = self.width;
+                self.persist_settings();
                 self.refresh_hint();
             }
             "width+" => {
                 self.width = (self.width + 1.0).min(24.0);
+                self.settings.annotation_stroke_width = self.width;
+                self.persist_settings();
                 self.refresh_hint();
             }
             "text-size-" => {
@@ -657,6 +666,12 @@ impl Editor {
             "help" => {
                 self.help_visible = !self.help_visible;
                 self.ui.set_help_visible(self.help_visible);
+            }
+            "guides" => {
+                self.settings.show_snap_lines = !self.settings.show_snap_lines;
+                self.persist_settings();
+                self.rebuild_composited();
+                self.refresh_hint();
             }
             "quit" => crate::quit_event_loop(),
             _ => {}
@@ -852,8 +867,7 @@ impl Editor {
         if self.show_ocr {
             let color = Color32::from_rgb(0, 230, 255);
             let origin = self.ocr_origin;
-            for region in &self.ocr_regions {
-                let r = region.rect;
+            for region in &self.ocr_regions {                let r = region.rect;
                 let min = Pos2::new(r.x0 + origin.x, r.y0 + origin.y);
                 let max = Pos2::new(r.x1 + origin.x, r.y1 + origin.y);
                 for (a, b) in [
@@ -864,6 +878,28 @@ impl Editor {
                 ] {
                     pocshot_annotate::raster::draw_line_on_image(&mut self.composited, a, b, color, 1.0);
                 }
+            }
+        }
+        if self.settings.show_snap_lines {
+            let color = self.settings.theme.colors.snap_line_faint;
+            let (w, h) = (self.size().x, self.size().y);
+            for x in &self.snap_lines.vertical {
+                pocshot_annotate::raster::draw_line_on_image(
+                    &mut self.composited,
+                    Pos2::new(*x, 0.0),
+                    Pos2::new(*x, h),
+                    color,
+                    1.0,
+                );
+            }
+            for y in &self.snap_lines.horizontal {
+                pocshot_annotate::raster::draw_line_on_image(
+                    &mut self.composited,
+                    Pos2::new(0.0, *y),
+                    Pos2::new(w, *y),
+                    color,
+                    1.0,
+                );
             }
         }
         self.ui.set_overlay(to_slint_image(&self.composited));
@@ -937,8 +973,9 @@ impl Editor {
                         region.text.as_deref().unwrap_or("")
                     );
                 }
-                self.ocr_regions = regions;
+                self.ocr_regions = regions.clone();
                 self.show_ocr = true;
+                self.status = Some(format!("OCR: {} text regions", regions.len()));
                 self.rebuild_composited();
             }
             Err(mpsc::TryRecvError::Empty) => {}
@@ -1134,21 +1171,26 @@ impl Editor {
             .set_copy_save_value(if self.copy_on_save { "on" } else { "off" }.into());
         self.ui
             .set_snap_value(if self.snap_enabled { "on" } else { "off" }.into());
+        self.ui.set_guides_value(
+            if self.settings.show_snap_lines { "on" } else { "off" }.into(),
+        );
         if self.typing_text {
             self.ui.set_hint(
                 "Type text · Enter commit · Esc cancel · Backspace delete".into(),
             );
             return;
         }
-        self.ui.set_hint(
-            format!(
-                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · G highlight-text · N counter · T text · B blur · M pixelate · E eraser · V select · O OCR · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc clear or quit",
-                self.tool,
-                self.color_index(),
-                self.width
-            )
-            .into(),
+        let normal = format!(
+            "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · G highlight-text · N counter · T text · B blur · M pixelate · E eraser · V select · O OCR · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc clear or quit",
+            self.tool,
+            self.color_index(),
+            self.width
         );
+        let hint = match &self.status {
+            Some(status) => format!("{status}  ·  {normal}"),
+            None => normal,
+        };
+        self.ui.set_hint(hint.into());
     }
 
     fn color_index(&self) -> usize {
