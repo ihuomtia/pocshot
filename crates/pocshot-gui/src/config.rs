@@ -20,6 +20,10 @@ pub struct AppSettings {
     pub ocr_enabled: bool,
     pub show_text_boxes: bool,
     pub show_ocr_debug: bool,
+    /// Debug: draw the performance HUD (renderer, fps, frame gap and build
+    /// time) in the top-right corner of the canvas.
+    #[serde(default)]
+    pub show_perf_hud: bool,
     pub ocr_confidence: f32,
     /// Directory holding the ocrs `.rten` models (text-detection.rten +
     /// text-recognition.rten). Empty means the default location
@@ -45,6 +49,7 @@ impl Default for AppSettings {
             ocr_enabled: false,
             show_text_boxes: false,
             show_ocr_debug: false,
+            show_perf_hud: false,
             ocr_confidence: 0.5,
             ocr_models_dir: String::new(),
             snap_enabled: true,
@@ -337,6 +342,35 @@ mod tests {
             std::fs::create_dir_all(config_dir()).unwrap();
             std::fs::write(config_path(), legacy).unwrap();
             assert!(!load().ocr_region_only);
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn perf_hud_defaults_off_and_roundtrips() {
+        let dir = std::env::temp_dir().join(format!("pocshot-cfg-hud-{}", std::process::id()));
+        with_tmp_config(&dir, || {
+            // Fresh configs default the HUD off — it must be opt-in so it never
+            // becomes part of the cost it measures.
+            assert!(!AppSettings::default().show_perf_hud);
+            let mut s = AppSettings::default();
+            s.show_perf_hud = true;
+            save(&s);
+            assert!(load().show_perf_hud);
+
+            // A legacy config (pre-HUD) still loads, with the flag off.
+            let legacy = r#"{
+                "ocr_enabled": true,
+                "show_text_boxes": false,
+                "show_ocr_debug": false,
+                "ocr_confidence": 0.5,
+                "ocr_model_path": "",
+                "snap_enabled": true,
+                "show_snap_lines": true
+            }"#;
+            std::fs::create_dir_all(config_dir()).unwrap();
+            std::fs::write(config_path(), legacy).unwrap();
+            assert!(!load().show_perf_hud);
         });
         let _ = std::fs::remove_dir_all(&dir);
     }

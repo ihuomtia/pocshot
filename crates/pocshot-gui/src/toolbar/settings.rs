@@ -18,6 +18,7 @@ pub fn show_settings_panel(
     ocr_enabled: &mut bool,
     show_text_boxes: &mut bool,
     show_ocr_debug: &mut bool,
+    show_perf_hud: &mut bool,
     ocr_region_only: &mut bool,
     ocr_confidence: &mut f32,
     ocr_models_dir: &mut String,
@@ -250,6 +251,8 @@ pub fn show_settings_panel(
     *settings_changed |= ui.checkbox(snap_enabled, "Enable snapping").changed();
     *settings_changed |= ui.checkbox(show_ocr_debug, "Show OCR debug zones").changed();
     *settings_changed |= ui.checkbox(ocr_region_only, "Detect text only in selection").changed();
+    *settings_changed |=
+        ui.checkbox(show_perf_hud, "Show performance HUD (top-right)").changed();
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("Hold Shift to temporarily disable snapping")

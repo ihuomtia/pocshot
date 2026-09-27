@@ -10,6 +10,7 @@ impl PocshotApp {
             ocr_enabled: self.ocr_enabled,
             show_text_boxes: self.show_text_boxes,
             show_ocr_debug: self.show_ocr_debug,
+            show_perf_hud: self.show_perf_hud,
             ocr_confidence: self.ocr_confidence,
             ocr_models_dir: self.ocr_models_dir.clone(),
             snap_enabled: self.snap_enabled,

@@ -3,6 +3,7 @@ mod export;
 mod help_overlay;
 mod ocr;
 mod overlay;
+mod perf_hud;
 mod selection_ui;
 mod settings;
 mod snap_overlay;
@@ -23,6 +24,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::annotation::{AnnotationState, AnnotationTool};
+use crate::app::perf_hud::PerfStats;
 use crate::canvas::{capture_size, clamp_image_rect, fit_rect, native_rect, screen_to_image};
 use crate::config;
 use crate::selection::{handle_rects, HandleType, ImageSelection};
@@ -295,6 +297,12 @@ struct PocshotApp {
     /// Baked shortcut panel (static while shown) and the key it was built for.
     help_overlay: Option<TextureHandle>,
     help_overlay_key: Option<u64>,
+    /// Draw the performance HUD in the top-right corner (debug setting).
+    show_perf_hud: bool,
+    /// Rolling frame-timing samples shown by the HUD.
+    perf: PerfStats,
+    /// Pixel dimensions of the captured canvas (the base image), for the HUD.
+    canvas_px: [u32; 2],
     /// Cached layout for the status pill so the galley is rebuilt only when
     /// the status text or theme generation changes. Stored as an `Arc` because
     /// egui returns the layout as `Arc<Galley>` and `Painter::galley` accepts
@@ -359,6 +367,9 @@ impl PocshotApp {
             theme_generation: 0,
             help_overlay: None,
             help_overlay_key: None,
+            show_perf_hud: settings.show_perf_hud,
+            perf: PerfStats::default(),
+            canvas_px: [0, 0],
             status_galley: None,
         };
         match source {
@@ -457,6 +468,7 @@ impl PocshotApp {
         let color_image = ColorImage::from_rgba_unmultiplied(size, image.as_raw());
         self.texture =
             Some(ctx.load_texture("screen-capture", color_image, TextureOptions::LINEAR));
+        self.canvas_px = [image.width(), image.height()];
         self.capture = Some(image.clone());
         self.capture_undo.clear();
         self.capture_redo.clear();
@@ -907,6 +919,7 @@ impl eframe::App for PocshotApp {
             // build means our own per-frame work is the problem.
             let gap = t.elapsed();
             let build = self.last_build;
+            self.perf.record(gap, build);
             if gap > Duration::from_millis(100) && ctx.has_requested_repaint() {
                 log::warn!("slow frame: gap={gap:?} build={build:?}");
             } else {
@@ -1117,6 +1130,7 @@ impl eframe::App for PocshotApp {
                                         &mut self.ocr_enabled,
                                         &mut self.show_text_boxes,
                                         &mut self.show_ocr_debug,
+                                        &mut self.show_perf_hud,
                                         &mut self.ocr_region_only,
                                         &mut self.ocr_confidence,
                                         &mut self.ocr_models_dir,
@@ -1289,6 +1303,7 @@ impl eframe::App for PocshotApp {
                 self.draw_ocr_overlay(&painter, draw_rect, image_size);
                 self.draw_selection_top(ui, &painter, &texture, draw_rect, image_size);
                 self.draw_status_line(&painter, draw_rect, &status);
+                self.draw_perf_hud(ui, &painter, draw_rect, crate::renderer::active_label());
                 if self.annotations.is_text_editing() {
                     self.draw_text_editor(ui, draw_rect, image_size);
                 }

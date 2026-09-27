@@ -146,6 +146,25 @@ fn effective_with_hardware(setting: RendererSetting, has_hardware: bool) -> Effe
     }
 }
 
+/// The renderer actually chosen at startup, latched by [`apply`]. This is the
+/// authoritative answer — `apply` is the only place that knows the adapter
+/// probe result, so the HUD reads this rather than re-deriving the decision.
+static ACTIVE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(ACTIVE_UNKNOWN);
+
+const ACTIVE_UNKNOWN: u8 = 0;
+const ACTIVE_OPENGL: u8 = 1;
+const ACTIVE_SOFTWARE: u8 = 2;
+
+/// Human-readable name of the renderer this process is actually using, for the
+/// performance HUD and logs. `"unknown"` until [`apply`] has run.
+pub(crate) fn active_label() -> &'static str {
+    match ACTIVE.load(std::sync::atomic::Ordering::Relaxed) {
+        ACTIVE_OPENGL => "opengl",
+        ACTIVE_SOFTWARE => "software",
+        _ => "unknown",
+    }
+}
+
 /// Point `options` at the renderer to use, honoring `POCSHOT_RENDERER`.
 pub(crate) fn apply(options: &mut eframe::NativeOptions) {
     let setting = current_setting();
@@ -169,6 +188,7 @@ pub(crate) fn apply(options: &mut eframe::NativeOptions) {
     }
     match effective_with_hardware(setting, has_hardware) {
         EffectiveRenderer::Gpu => {
+            ACTIVE.store(ACTIVE_OPENGL, std::sync::atomic::Ordering::Relaxed);
             #[cfg(feature = "gpu")]
             apply_gpu(options);
             #[cfg(not(feature = "gpu"))]
@@ -178,6 +198,7 @@ pub(crate) fn apply(options: &mut eframe::NativeOptions) {
             }
         }
         EffectiveRenderer::Software => {
+            ACTIVE.store(ACTIVE_SOFTWARE, std::sync::atomic::Ordering::Relaxed);
             #[cfg(feature = "software")]
             apply_software(options);
             #[cfg(not(feature = "software"))]
