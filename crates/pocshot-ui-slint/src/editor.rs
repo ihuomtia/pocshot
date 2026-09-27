@@ -70,6 +70,8 @@ pub struct Editor {
     snap_enabled: bool,
     ocr_rx: Option<mpsc::Receiver<Vec<TextRegion>>>,
     ocr_regions: Vec<TextRegion>,
+    /// Image-space origin of the crop the OCR regions are relative to.
+    ocr_origin: Pos2,
     show_ocr: bool,
     /// Keeps the OCR poll timer alive.
     _timer: slint::Timer,
@@ -125,6 +127,7 @@ impl Editor {
             snap_enabled: true,
             ocr_rx: None,
             ocr_regions: Vec::new(),
+            ocr_origin: Pos2::ZERO,
             show_ocr: false,
             _timer: slint::Timer::default(),
         }));
@@ -528,7 +531,7 @@ impl Editor {
         render_annotations(&mut self.composited, &self.annotations, Pos2::ZERO);
         if self.show_ocr {
             let color = Color32::from_rgb(0, 230, 255);
-            let origin = Pos2::ZERO;
+            let origin = self.ocr_origin;
             for region in &self.ocr_regions {
                 let r = region.rect;
                 let min = Pos2::new(r.x0 + origin.x, r.y0 + origin.y);
@@ -572,6 +575,7 @@ impl Editor {
         let x1 = rect.max.x.ceil().min(self.size().x) as u32;
         let y1 = rect.max.y.ceil().min(self.size().y) as u32;
         let crop = imageops::crop_imm(self.base.as_ref(), x0, y0, x1 - x0, y1 - y0).to_image();
+        self.ocr_origin = Pos2::new(x0 as f32, y0 as f32);
         let (tx, rx) = mpsc::channel();
         self.ocr_rx = Some(rx);
         log::info!("running OCR on {}x{} selection…", x1 - x0, y1 - y0);
