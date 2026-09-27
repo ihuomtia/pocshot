@@ -77,6 +77,25 @@ pub struct Editor {
 
 const TEXT_SIZE: f32 = 24.0;
 
+/// Toolbar order; index ↔ `ToolKind`.
+const TOOL_ORDER: [ToolKind; 15] = [
+    ToolKind::Select,
+    ToolKind::Rectangle,
+    ToolKind::FilledRectangle,
+    ToolKind::Line,
+    ToolKind::Arrow,
+    ToolKind::Circle,
+    ToolKind::FilledCircle,
+    ToolKind::Pen,
+    ToolKind::Highlighter,
+    ToolKind::Redact,
+    ToolKind::Counter,
+    ToolKind::Text,
+    ToolKind::Blur,
+    ToolKind::Pixelate,
+    ToolKind::Eraser,
+];
+
 impl Editor {
     pub fn new(ui: EditorWindow, base: RgbaImage, snap_lines: SnapLines) -> Rc<RefCell<Self>> {
         let size = Vec2::new(base.width() as f32, base.height() as f32);
@@ -123,6 +142,38 @@ impl Editor {
             editor.borrow().ui.on_key(move |text| {
                 if let Some(editor) = weak.upgrade() {
                     editor.borrow_mut().on_key(&text);
+                }
+            });
+        }
+        {
+            let weak = Rc::downgrade(&editor);
+            editor.borrow().ui.on_tool(move |index| {
+                if let Some(editor) = weak.upgrade() {
+                    let mut editor = editor.borrow_mut();
+                    if let Some(tool) = TOOL_ORDER.get(index.max(0) as usize) {
+                        let tool = *tool;
+                        editor.set_tool(tool);
+                    }
+                }
+            });
+        }
+        {
+            let weak = Rc::downgrade(&editor);
+            editor.borrow().ui.on_pick_color(move |index| {
+                if let Some(editor) = weak.upgrade() {
+                    let mut editor = editor.borrow_mut();
+                    if let Some(color) = PALETTE.get(index.max(0) as usize) {
+                        editor.color = *color;
+                        editor.refresh_hint();
+                    }
+                }
+            });
+        }
+        {
+            let weak = Rc::downgrade(&editor);
+            editor.borrow().ui.on_action(move |action| {
+                if let Some(editor) = weak.upgrade() {
+                    editor.borrow_mut().on_action(&action);
                 }
             });
         }
@@ -231,6 +282,9 @@ impl Editor {
     }
 
     fn on_pointer(&mut self, nx: f32, ny: f32, phase: i32) {
+        if self.pointer_in_toolbar(ny) {
+            return;
+        }
         let (ctrl, shift) = platform::query_modifiers();
         let raw = self.norm_to_image(nx, ny);
         self.refresh_layout();
@@ -323,6 +377,32 @@ impl Editor {
         self.refresh_selection();
         self.refresh_preview();
         self.refresh_hint();
+    }
+
+    fn on_action(&mut self, action: &str) {
+        match action {
+            "width-" => {
+                self.width = (self.width - 1.0).max(1.0);
+                self.refresh_hint();
+            }
+            "width+" => {
+                self.width = (self.width + 1.0).min(24.0);
+                self.refresh_hint();
+            }
+            "undo" => self.undo(),
+            "ocr" => self.toggle_ocr(),
+            "copy" => self.copy_and_quit(),
+            "save" => self.save_and_quit(),
+            "quit" => crate::quit_event_loop(),
+            _ => {}
+        }
+    }
+
+    /// True when the normalised `ny` falls inside the toolbar band, where
+    /// pointer events belong to buttons rather than the canvas.
+    fn pointer_in_toolbar(&self, ny: f32) -> bool {
+        let win = self.window_size();
+        win.y > 0.0 && ny * win.y > win.y - 76.0
     }
 
     fn on_key(&mut self, text: &str) {
@@ -651,6 +731,10 @@ impl Editor {
     }
 
     fn refresh_hint(&self) {
+        self.ui
+            .set_active_tool(self.tool_index());
+        self.ui
+            .set_active_color(PALETTE.iter().position(|c| *c == self.color).unwrap_or(0) as i32);
         if self.typing_text {
             self.ui.set_hint(
                 "Type text · Enter commit · Esc cancel · Backspace delete".into(),
@@ -674,6 +758,13 @@ impl Editor {
             .position(|c| *c == self.color)
             .map(|i| i + 1)
             .unwrap_or(0)
+    }
+
+    fn tool_index(&self) -> i32 {
+        TOOL_ORDER
+            .iter()
+            .position(|t| *t == self.tool)
+            .unwrap_or(0) as i32
     }
 
     /// The selection with all annotations stamped on, ready to copy/save.

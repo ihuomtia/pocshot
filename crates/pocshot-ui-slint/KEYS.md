@@ -1,5 +1,8 @@
 # M1 tool/colour/width summary (Slint UI)
 
+Everything below is also on the bottom toolbar (tools, colour swatches,
+width −/+, undo, OCR, copy, save, quit).
+
 Current editor (branch `slint-ui`, crate `crates/pocshot-ui-slint`) supports:
 
 Tools (keyboard):
