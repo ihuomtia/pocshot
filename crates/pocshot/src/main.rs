@@ -192,7 +192,11 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Some(Command::Tray) => {
-            if let Err(e) = pocshot_tray::run() {
+            let ui = match cli.ui {
+                Ui::Egui => "egui",
+                Ui::Slint => "slint",
+            };
+            if let Err(e) = pocshot_tray::run(Some(ui.to_string())) {
                 let message = format!("Pocshot tray failed: {e}");
                 log::error!("{message}");
                 pocshot_core::show_error_dialog(&message);

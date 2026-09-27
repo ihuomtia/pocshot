@@ -23,9 +23,10 @@ const MENU_SCREENSHOT: &str = "screenshot";
 const MENU_EDIT: &str = "edit";
 const MENU_EXIT: &str = "exit";
 
-/// Run the tray daemon until the user chooses "Exit".
+/// Run the tray daemon until the user chooses "Exit". `ui` is passed through to
+/// the launched GUI processes (`egui`/`slint`).
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-pub fn run() -> Result<()> {
+pub fn run(ui: Option<String>) -> Result<()> {
     // Bound to `_tray` so the icon lives for the whole loop.
     let _tray = TrayIconBuilder::new()
         .with_tooltip(TOOLTIP)
@@ -41,7 +42,7 @@ pub fn run() -> Result<()> {
                     button: MouseButton::Left,
                     button_state: MouseButtonState::Up,
                     ..
-                } => spawn("gui"),
+                } => spawn(ui.as_deref(), "gui"),
                 TrayIconEvent::Click {
                     button: MouseButton::Right,
                     button_state: MouseButtonState::Up,
@@ -65,8 +66,8 @@ pub fn run() -> Result<()> {
                             log::info!("pocshot tray exiting");
                             break;
                         }
-                        Some(id) if id.0 == MENU_SCREENSHOT => spawn("gui"),
-                        Some(id) if id.0 == MENU_EDIT => spawn("edit"),
+                        Some(id) if id.0 == MENU_SCREENSHOT => spawn(ui.as_deref(), "gui"),
+                        Some(id) if id.0 == MENU_EDIT => spawn(ui.as_deref(), "edit"),
                         _ => {}
                     }
                 }
@@ -79,13 +80,13 @@ pub fn run() -> Result<()> {
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
-pub fn run() -> Result<()> {
+pub fn run(_ui: Option<String>) -> Result<()> {
     anyhow::bail!("the tray is only supported on Windows and Linux")
 }
 
 /// Launch a detached process for the given subcommand (`gui`, `edit`, …).
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-fn spawn(action: &str) {
+fn spawn(ui: Option<&str>, action: &str) {
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
         Err(e) => {
@@ -94,6 +95,9 @@ fn spawn(action: &str) {
         }
     };
     let mut cmd = std::process::Command::new(exe);
+    if let Some(ui) = ui {
+        cmd.args(["--ui", ui]);
+    }
     cmd.arg(action);
     pocshot_core::quiet_io(&mut cmd);
     pocshot_core::detach(&mut cmd);
