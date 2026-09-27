@@ -4838,6 +4838,7 @@ dependencies = [
  "pocshot-snap",
  "slint",
  "slint-build",
+ "windows-sys 0.59.0",
  "x11-dl",
 ]
 

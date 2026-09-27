@@ -47,10 +47,18 @@ mod imp {
 
 #[cfg(target_os = "windows")]
 mod imp {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_CONTROL, VK_SHIFT,
+    };
+
     /// Current (Ctrl, Shift) state via `GetAsyncKeyState`.
     pub fn query_modifiers() -> (bool, bool) {
-        // TODO(M1): implement with GetAsyncKeyState(VK_CONTROL / VK_SHIFT).
-        (false, false)
+        // The high bit is set while the key is down.
+        let down = |key: i32| unsafe { (GetAsyncKeyState(key) as u16 & 0x8000) != 0 };
+        (
+            down(VK_CONTROL as i32),
+            down(VK_SHIFT as i32),
+        )
     }
 }
 
