@@ -67,8 +67,14 @@ impl PocshotApp {
         );
         let size = [capture.width() as usize, capture.height() as usize];
         let color_image = egui::ColorImage::from_rgba_unmultiplied(size, baked.as_raw());
+        // NEAREST: the overlay is a mask of axis-aligned 1px guide lines, so
+        // there is no smooth content to interpolate. LINEAR would blend each
+        // guide into its neighbours whenever the drawn rect differs from the
+        // capture size (any non-100% DPI, e.g. RDP at 125%/150%), turning a
+        // crisp 1px line into a soft 2px smear. The photographic textures
+        // (screen capture, pin) stay LINEAR.
         self.snap_overlay =
-            Some(ctx.load_texture("snap-overlay", color_image, TextureOptions::LINEAR));
+            Some(ctx.load_texture("snap-overlay", color_image, TextureOptions::NEAREST));
         self.snap_overlay_key = key;
     }
 

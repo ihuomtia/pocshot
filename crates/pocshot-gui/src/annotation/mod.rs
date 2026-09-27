@@ -27,6 +27,8 @@ use image::RgbaImage;
 use crate::theme::Theme;
 
 pub use counter::COUNTER_BUBBLE_RADIUS;
+pub use counter_font::{draw_text_on_image, measure_text};
+pub use raster::{blend_pixel, fill_rect_on_image};
 pub use tool::{Tool, ToolKind};
 
 /// The selectable drawing/effect tools.

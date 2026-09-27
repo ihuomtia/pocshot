@@ -1,5 +1,6 @@
 mod effects;
 mod export;
+mod help_overlay;
 mod ocr;
 mod overlay;
 mod selection_ui;
@@ -9,7 +10,7 @@ mod text_border;
 
 use eframe::egui::{
     self, pos2, vec2, Color32, ColorImage, CursorIcon, Id, Key, Pos2, Rect, Sense, Stroke,
-    StrokeKind, TextureHandle, TextureOptions, Vec2,
+    TextureHandle, TextureOptions, Vec2,
 };
 use image::{imageops, RgbaImage};
 use pocshot_ocr::detect::TextDetector;
@@ -268,6 +269,9 @@ struct PocshotApp {
     snap_overlay_key: SnapOverlayKey,
     snap_lines_generation: u64,
     theme_generation: u64,
+    /// Baked shortcut panel (static while shown) and the key it was built for.
+    help_overlay: Option<TextureHandle>,
+    help_overlay_key: Option<u64>,
     /// Cached layout for the status pill so the galley is rebuilt only when
     /// the status text or theme generation changes. Stored as an `Arc` because
     /// egui returns the layout as `Arc<Galley>` and `Painter::galley` accepts
@@ -329,6 +333,8 @@ impl PocshotApp {
             snap_overlay_key: (0, 0, 0, false, false, 0),
             snap_lines_generation: 0,
             theme_generation: 0,
+            help_overlay: None,
+            help_overlay_key: None,
             status_galley: None,
         };
         match source {
@@ -1024,84 +1030,8 @@ impl eframe::App for PocshotApp {
 
                 let mut help_rect = Rect::NOTHING;
                 if self.show_help && no_selection {
-                    let rows = [
-                        ("Drag", "select region"),
-                        ("Enter / Space", "capture"),
-                        ("Esc", "cancel / close"),
-                        ("Cmd+S", "save"),
-                        ("Cmd+C", "copy"),
-                        ("Cmd+R", "recapture"),
-                        ("V", "Select"),
-                        ("A", "Arrow"),
-                        ("L", "Line"),
-                        ("R", "Rect"),
-                        ("C", "Circle"),
-                        ("P", "Pen"),
-                        ("H", "Highlight"),
-                        ("N", "Number bubble"),
-                        ("T", "Text border"),
-                        ("D", "Redact"),
-                        ("M", "Pixelate"),
-                        ("B", "Blur"),
-                        ("E", "Eraser"),
-                        ("Shift+R", "Filled rect"),
-                        ("Shift+C", "Filled circle"),
-                        ("Ctrl+drag", "constrain shape / angle"),
-                    ];
-                    // Draw the instructions centered on the screen, styled like
-                    // the "Drag to select a region" hint, with a subtle backdrop.
-                    let line_h = 20.0_f32;
-                    let text_w = 260.0_f32;
-                    let title = "Shortcuts";
-                    let box_w = text_w + 60.0;
-                    let box_h = 40.0 + rows.len() as f32 * line_h + 20.0;
-                    let center = draw_rect.center();
-                    let box_rect = Rect::from_center_size(center, vec2(box_w, box_h + line_h));
-                    help_rect = box_rect;
-                    painter.rect_filled(
-                        box_rect,
-                        theme.geometry.help_radius,
-                        Color32::from_rgba_unmultiplied(10, 10, 14, 200),
-                    );
-                    painter.rect_stroke(
-                        box_rect,
-                        theme.geometry.help_radius,
-                        Stroke::new(1.0_f32, theme.colors.box_border),
-                        StrokeKind::Middle,
-                    );
-                    let mut y = box_rect.min.y + 16.0;
-                    painter.text(
-                        pos2(center.x, y),
-                        egui::Align2::CENTER_TOP,
-                        title,
-                        egui::FontId::proportional(theme.fonts.help_title),
-                        theme.colors.text_primary,
-                    );
-                    y += line_h + 6.0;
-                    for (shortcut, desc) in rows {
-                        painter.text(
-                            pos2(box_rect.min.x + 30.0, y),
-                            egui::Align2::LEFT_CENTER,
-                            shortcut,
-                            egui::FontId::proportional(theme.fonts.help_row),
-                            theme.colors.text_primary,
-                        );
-                        painter.text(
-                            pos2(box_rect.max.x - 30.0, y),
-                            egui::Align2::RIGHT_CENTER,
-                            desc,
-                            egui::FontId::proportional(theme.fonts.help_row),
-                            theme.colors.text_muted,
-                        );
-                        y += line_h;
-                    }
-                    painter.text(
-                        pos2(center.x, box_rect.max.y - 14.0),
-                        egui::Align2::CENTER_BOTTOM,
-                        "Select a region to dismiss",
-                        egui::FontId::proportional(theme.fonts.help_footer),
-                        Color32::from_rgba_unmultiplied(180, 180, 180, 220),
-                    );
+                    self.refresh_help_overlay(ui.ctx());
+                    help_rect = self.draw_help_overlay(&painter, draw_rect);
                 }
 
                 let mut settings_rect = Rect::NOTHING;
