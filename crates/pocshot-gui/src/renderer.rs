@@ -216,6 +216,29 @@ fn apply_gpu(options: &mut eframe::NativeOptions) {
     log::info!("using OpenGL (glow) renderer");
 }
 
+/// Parse `POCSHOT_FRAME_LATENCY`: unset → 1 (current default), `0` → None (no
+/// cap), `N` → Some(N). Invalid values fall back to the default.
+#[cfg(feature = "software")]
+fn parse_frame_latency(value: Option<&str>) -> Option<u32> {
+    match value.and_then(|v| v.trim().parse::<u32>().ok()) {
+        Some(0) => None,
+        Some(n) => Some(n),
+        None => Some(1),
+    }
+}
+
+/// Parse `POCSHOT_PRESENT_MODE` into a wgpu present mode. `None` leaves
+/// eframe's default (AutoVsync).
+#[cfg(feature = "software")]
+fn parse_present_mode(value: Option<&str>) -> Option<eframe::wgpu::PresentMode> {
+    match value?.trim().to_ascii_lowercase().as_str() {
+        "immediate" | "now" | "nosync" => Some(eframe::wgpu::PresentMode::Immediate),
+        "mailbox" => Some(eframe::wgpu::PresentMode::Mailbox),
+        "vsync" | "fifo" | "auto" => Some(eframe::wgpu::PresentMode::AutoVsync),
+        _ => None,
+    }
+}
+
 /// Force wgpu onto a software (CPU) adapter.
 #[cfg(feature = "software")]
 fn apply_software(options: &mut eframe::NativeOptions) {
@@ -225,7 +248,25 @@ fn apply_software(options: &mut eframe::NativeOptions) {
     // Don't let the CPU adapter queue frames ahead of the display: on WARP /
     // lavapipe the default queue makes input feel laggy even when every frame
     // renders in reasonable time.
-    options.wgpu_options.desired_maximum_frame_latency = Some(1);
+    //
+    // Overridable, because this is also a suspect for the ~250ms/frame seen on
+    // a VM: forbidding pipelining means every present must complete before the
+    // next frame can start. POCSHOT_FRAME_LATENCY=0 disables it, =N sets N.
+    options.wgpu_options.desired_maximum_frame_latency =
+        parse_frame_latency(std::env::var("POCSHOT_FRAME_LATENCY").ok().as_deref());
+
+    // Present mode. Defaults to eframe's AutoVsync, which on a CPU adapter can
+    // mean a synchronous full-surface copy to the compositor every frame — a
+    // cost that does not shrink when the app draws less. POCSHOT_PRESENT_MODE
+    // allows A/B testing: vsync (default) | immediate | mailbox.
+    if let Some(mode) = parse_present_mode(std::env::var("POCSHOT_PRESENT_MODE").ok().as_deref()) {
+        log::info!("software renderer: present mode forced to {mode:?}");
+        options.wgpu_options.present_mode = mode;
+    }
+    log::info!(
+        "software renderer: desired_maximum_frame_latency = {:?}",
+        options.wgpu_options.desired_maximum_frame_latency
+    );
 
     let setup = eframe::egui_wgpu::WgpuSetupCreateNew {
         native_adapter_selector: Some(Arc::new(select_software_adapter)),
@@ -402,6 +443,38 @@ mod tests {
     #[test]
     fn unrelated_failure_does_not_fall_back() {
         assert!(!decide_fallback("boom", RendererSetting::Auto));
+    }
+
+    #[cfg(feature = "software")]
+    #[test]
+    fn frame_latency_parsing_keeps_the_default_and_allows_opt_out() {
+        // Unset or garbage keeps the current behaviour (cap at 1).
+        assert_eq!(parse_frame_latency(None), Some(1));
+        assert_eq!(parse_frame_latency(Some("junk")), Some(1));
+        assert_eq!(parse_frame_latency(Some("")), Some(1));
+        // 0 means "no cap" (None), N passes through.
+        assert_eq!(parse_frame_latency(Some("0")), None);
+        assert_eq!(parse_frame_latency(Some("2")), Some(2));
+        assert_eq!(parse_frame_latency(Some(" 3 ")), Some(3));
+    }
+
+    #[cfg(feature = "software")]
+    #[test]
+    fn present_mode_parsing_maps_the_documented_spellings() {
+        use eframe::wgpu::PresentMode;
+        assert_eq!(
+            parse_present_mode(Some("immediate")),
+            Some(PresentMode::Immediate)
+        );
+        assert_eq!(parse_present_mode(Some("NOSYNC")), Some(PresentMode::Immediate));
+        assert_eq!(parse_present_mode(Some("mailbox")), Some(PresentMode::Mailbox));
+        assert_eq!(
+            parse_present_mode(Some("vsync")),
+            Some(PresentMode::AutoVsync)
+        );
+        // Unset or unknown leaves eframe's default untouched.
+        assert_eq!(parse_present_mode(None), None);
+        assert_eq!(parse_present_mode(Some("bogus")), None);
     }
 
     #[test]
