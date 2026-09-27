@@ -165,6 +165,8 @@ fn main() -> anyhow::Result<()> {
     pocshot_gui::install_fallback_hook();
     if cli.software {
         pocshot_gui::set_software_renderer();
+        #[cfg(feature = "ui-slint")]
+        pocshot_ui_slint::set_software_renderer();
     }
 
     match cli.command {

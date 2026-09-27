@@ -16,6 +16,7 @@ mod snap;
 
 /// Capture the screen and open the editor on it.
 pub fn run() -> Result<()> {
+    init_backend().context("failed to select a Slint backend")?;
     let (image, monitor) = pocshot_core::capture_screen_with_monitor()
         .context("failed to capture the screen")?;
     log::info!(
@@ -50,8 +51,53 @@ pub fn run() -> Result<()> {
 
 /// Open the editor on an image supplied by the caller (edit-clipboard flow).
 pub fn run_edit(image: RgbaImage) -> Result<()> {
+    init_backend().context("failed to select a Slint backend")?;
     let lines = pocshot_snap::detect_snap_lines(&image, &pocshot_snap::SnapConfig::default());
     show_editor(image, lines)
+}
+
+/// Force the software renderer for this process (`--software`).
+pub fn set_software_renderer() {
+    FORCE_SOFTWARE.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+static FORCE_SOFTWARE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Pick a renderer, mirroring `POCSHOT_RENDERER` on the egui side: force
+/// software when asked, otherwise prefer the GPU renderer and fall back to the
+/// software one (GPU-less machines/RDP).
+fn init_backend() -> Result<(), slint::PlatformError> {
+    let forced = FORCE_SOFTWARE.load(std::sync::atomic::Ordering::Relaxed)
+        || std::env::var("POCSHOT_RENDERER")
+            .map(|value| value.eq_ignore_ascii_case("software"))
+            .unwrap_or(false);
+
+    if forced {
+        log::info!("software renderer requested: using Slint's winit-software backend");
+        return slint::BackendSelector::new()
+            .backend_name("winit".to_string())
+            .renderer_name("software".to_string())
+            .select();
+    }
+    if std::env::var_os("SLINT_BACKEND").is_some() {
+        // An explicit SLINT_BACKEND wins; Slint reads it itself.
+        return Ok(());
+    }
+
+    match slint::BackendSelector::new()
+        .backend_name("winit".to_string())
+        .renderer_name("femtovg".to_string())
+        .select()
+    {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            log::warn!("femtovg renderer unavailable ({error}); using the software renderer");
+            slint::BackendSelector::new()
+                .backend_name("winit".to_string())
+                .renderer_name("software".to_string())
+                .select()
+        }
+    }
 }
 
 fn show_editor(image: RgbaImage, snap_lines: pocshot_snap::SnapLines) -> Result<()> {
