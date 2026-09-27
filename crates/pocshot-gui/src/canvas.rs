@@ -39,13 +39,6 @@ pub fn image_to_screen_rect(rect: Rect, draw_rect: Rect, image_size: Vec2) -> Re
     Rect::from_min_max(min, max)
 }
 
-pub fn normalized_uv(rect: Rect, image_size: Vec2) -> Rect {
-    Rect::from_min_max(
-        pos2(rect.min.x / image_size.x, rect.min.y / image_size.y),
-        pos2(rect.max.x / image_size.x, rect.max.y / image_size.y),
-    )
-}
-
 pub fn capture_size(image: &image::RgbaImage) -> Vec2 {
     vec2(image.width() as f32, image.height() as f32)
 }

@@ -94,6 +94,22 @@ pub fn run_edit(image: RgbaImage) -> eframe::Result<()> {
     finalize(result)
 }
 
+/// The four edge bands of the "no selection" vignette: `(top, bottom, left,
+/// right)` rects covering everything outside `rect.shrink(margin)`.
+///
+/// Extracted so the pixel-work reduction is pinned by tests: the previous
+/// implementation alpha-blended the entire canvas here, which is a
+/// full-screen read-modify-write in the CPU rasterizer.
+pub(crate) fn vignette_edge_bands(rect: Rect, margin: f32) -> [Rect; 4] {
+    let inner = rect.shrink(margin.clamp(0.0, rect.width().min(rect.height()) / 2.0));
+    [
+        Rect::from_min_max(rect.min, pos2(rect.max.x, inner.min.y)),
+        Rect::from_min_max(pos2(rect.min.x, inner.max.y), rect.max),
+        Rect::from_min_max(pos2(rect.min.x, inner.min.y), pos2(inner.min.x, inner.max.y)),
+        Rect::from_min_max(pos2(inner.max.x, inner.min.y), pos2(rect.max.x, inner.max.y)),
+    ]
+}
+
 pub fn run_pin(image_path: PathBuf, x: i32, y: i32, width: u32, height: u32) -> eframe::Result<()> {
     crate::logging::init();
     let size = vec2(width.max(1) as f32, height.max(1) as f32);
@@ -265,6 +281,13 @@ struct PocshotApp {
     /// Time of the previous frame, used to log frame timing for performance
     /// measurement (especially on software renderers).
     last_frame: Option<Instant>,
+    /// Accumulated wall-clock time spent inside `update()` (layout + draw call
+    /// submission) for the previous frame. Rasterization happens after
+    /// `update` returns, so this is paired with the inter-frame gap to tell
+    /// "frames are slow to build" apart from "frames are slow to raster/arrive"
+    /// — the distinction that decides whether to optimize CPU draw work or the
+    /// present path.
+    last_build: Duration,
     snap_overlay: Option<TextureHandle>,
     snap_overlay_key: SnapOverlayKey,
     snap_lines_generation: u64,
@@ -329,6 +352,7 @@ impl PocshotApp {
             clipboard_mode: matches!(source, AppSource::Clipboard(_)),
             theme: Arc::new(settings.theme),
             last_frame: None,
+            last_build: Duration::ZERO,
             snap_overlay: None,
             snap_overlay_key: (0, 0, 0, false, false, 0),
             snap_lines_generation: 0,
@@ -870,15 +894,23 @@ impl eframe::App for PocshotApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        let frame_start = Instant::now();
         self.normalize_dpi(ctx);
         self.shortcuts(ctx, frame);
 
         if let Some(t) = self.last_frame {
-            let dt = t.elapsed();
-            if dt > Duration::from_millis(100) && ctx.has_requested_repaint() {
-                log::warn!("slow frame: {dt:?}");
+            // `gap` is the wall-clock distance between consecutive frames: it
+            // includes this app's own build time, the rasterizer's work and any
+            // idle wait. `build` is only the time this function took. A large
+            // gap with a small build means the cost is outside our draw calls
+            // (raster/present, or simply no repaint was requested); a large
+            // build means our own per-frame work is the problem.
+            let gap = t.elapsed();
+            let build = self.last_build;
+            if gap > Duration::from_millis(100) && ctx.has_requested_repaint() {
+                log::warn!("slow frame: gap={gap:?} build={build:?}");
             } else {
-                log::debug!("frame: {dt:?}");
+                log::debug!("frame: gap={gap:?} build={build:?}");
             }
         }
         self.last_frame = Some(Instant::now());
@@ -972,7 +1004,22 @@ impl eframe::App for PocshotApp {
 
                 let no_selection = self.selection.is_none() && self.drag_start.is_none();
                 if no_selection {
-                    painter.rect_filled(draw_rect, 0.0, theme.colors.overlay_dim);
+                    // No selection: dim only a thin frame around the canvas
+                    // instead of alpha-blending the entire screen. A
+                    // full-screen translucent fill costs a full-screen
+                    // read-modify-write in the CPU rasterizer (2.07 Mpx at
+                    // 1080p, 8.29 at 4K) and was the single largest per-frame
+                    // cost after the screenshot blit. The visual difference is
+                    // a lighter vignette; the hint text stays readable because
+                    // it sits on the undimmed centre.
+                    let margin = 14.0_f32;
+                    let dim = theme.colors.overlay_dim;
+                    let [top, bottom, left, right] = vignette_edge_bands(draw_rect, margin);
+                    // Four thin edge bands instead of one full-canvas fill.
+                    painter.rect_filled(top, 0.0, dim);
+                    painter.rect_filled(bottom, 0.0, dim);
+                    painter.rect_filled(left, 0.0, dim);
+                    painter.rect_filled(right, 0.0, dim);
                     painter.text(
                         draw_rect.center(),
                         egui::Align2::CENTER_CENTER,
@@ -1246,5 +1293,61 @@ impl eframe::App for PocshotApp {
                     self.draw_text_editor(ui, draw_rect, image_size);
                 }
             });
+
+        self.last_build = frame_start.elapsed();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The vignette must not alpha-blend the whole canvas: that was a
+    /// full-screen read-modify-write per frame on the CPU rasterizer.
+    #[test]
+    fn vignette_covers_only_the_border_bands() {
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
+        let [top, bottom, left, right] = vignette_edge_bands(rect, 14.0);
+
+        // Each band spans the full canvas edge and is `margin` thick.
+        assert_eq!(top.height(), 14.0);
+        assert_eq!(bottom.height(), 14.0);
+        assert_eq!(left.width(), 14.0);
+        assert_eq!(right.width(), 14.0);
+        assert_eq!(top.width(), 1920.0);
+        assert_eq!(bottom.width(), 1920.0);
+
+        // The centre stays undimmed, so the hint text sits on clean image.
+        let centre = Rect::from_center_size(rect.center(), vec2(1.0, 1.0));
+        for band in [top, bottom, left, right] {
+            assert!(
+                !band.intersects(centre),
+                "centre pixel must not be inside a band"
+            );
+        }
+    }
+
+    /// Total dimmed area must be a small fraction of the canvas — the whole
+    /// point of the change. Guards against someone restoring the full fill.
+    #[test]
+    fn vignette_area_is_a_small_fraction_of_the_canvas() {
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
+        let [top, bottom, left, right] = vignette_edge_bands(rect, 14.0);
+        let dimmed: f32 = [top, bottom, left, right].iter().map(Rect::area).sum();
+        let total = rect.area();
+        assert!(
+            dimmed < total * 0.10,
+            "vignette dimmed {dimmed} of {total} px^2; expected < 10%"
+        );
+    }
+
+    /// A margin larger than half the canvas must clamp instead of inverting.
+    #[test]
+    fn vignette_margin_clamps_without_inverting() {
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(40.0, 20.0));
+        let bands = vignette_edge_bands(rect, 999.0);
+        for band in bands {
+            assert!(band.width() >= 0.0 && band.height() >= 0.0);
+        }
     }
 }

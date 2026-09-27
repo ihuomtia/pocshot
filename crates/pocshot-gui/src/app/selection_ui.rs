@@ -2,13 +2,13 @@
 //! selection chrome (shaded exterior, border, size readout, resize handles).
 
 use eframe::egui::{
-    self, pos2, vec2, Color32, CursorIcon, Id, Pos2, Rect, Sense, Stroke, StrokeKind,
+    self, pos2, vec2, CursorIcon, Id, Pos2, Rect, Sense, Stroke, StrokeKind,
     TextureHandle, Vec2,
 };
 
 use crate::app::PocshotApp;
 use crate::canvas::{
-    clamp_rect_to_size, image_to_screen_rect, normalized_uv, screen_to_image,
+    clamp_rect_to_size, image_to_screen_rect, screen_to_image,
     translate_rect_clamped,
 };
 use crate::selection::{handle_rects, HandleType, ImageSelection};
@@ -186,32 +186,20 @@ impl PocshotApp {
         }
     }
 
+    /// Draw the selection chrome that sits *under* the annotations. The base
+    /// screenshot itself is drawn exactly once per frame by `update()` (at
+    /// `draw_rect`, full texture, identity UVs), so this must never blit it
+    /// again: on a CPU renderer a second full-screen textured draw is the most
+    /// expensive thing in the frame, and pixel work is already the dominant
+    /// cost at 1080p+.
     pub(crate) fn draw_selection_base(
         &self,
         _ui: &egui::Ui,
         painter: &egui::Painter,
-        texture: &TextureHandle,
+        _texture: &TextureHandle,
         draw_rect: Rect,
         image_size: Vec2,
     ) {
-        let Some(selection) = self.selection else {
-            if self.show_snap_lines {
-                self.draw_snap_overlay(painter, draw_rect);
-                self.draw_annotation_snap_lines(painter, draw_rect, image_size);
-            }
-            return;
-        };
-        let image_rect =
-            clamp_rect_to_size(selection.rect(), image_size).unwrap_or_else(|| selection.rect());
-        let screen_rect = image_to_screen_rect(image_rect, draw_rect, image_size);
-
-        painter.image(
-            texture.id(),
-            screen_rect,
-            normalized_uv(image_rect, image_size),
-            Color32::WHITE,
-        );
-
         if self.show_snap_lines {
             self.draw_snap_overlay(painter, draw_rect);
             self.draw_annotation_snap_lines(painter, draw_rect, image_size);
