@@ -63,8 +63,12 @@ The default binary carries both of eframe's renderers and picks one at startup:
   to the bundled FXC when DirectX Shader Compiler is absent — and is
   intentionally slower.
 
-The switch is automatic: when OpenGL setup fails, the process relaunches itself
-with the software renderer (`POCSHOT_RENDERER=software`).
+`auto` probes adapters once at startup. If only a CPU adapter is present
+(WARP on Windows, lavapipe on Linux), it goes straight to the software
+renderer without attempting OpenGL, so there is no panic and no process
+relaunch on GPU-less machines. If a machine reports a hardware adapter but
+OpenGL setup still fails, the process relaunches itself with
+`POCSHOT_RENDERER=software` as a backstop.
 
 To force a renderer:
 
@@ -76,9 +80,11 @@ POCSHOT_RENDERER=software pocshot   # CPU rasterizer only
 ```
 
 The `--software` flag is equivalent to `POCSHOT_RENDERER=software` and takes
-precedence over it. Note: wgpu's CPU path needs a software Vulkan driver —
-`lavapipe` on Linux (Arch: `vulkan-swrast`), WARP on Windows. Without it wgpu
-picks the real GPU.
+precedence over it. `POCSHOT_RENDERER=gpu` also bypasses the adapter probe and
+forces the glow attempt — use it for the rare machine where OpenGL works but
+wgpu enumerates no hardware adapter. Note: wgpu's CPU path needs a software
+Vulkan driver — `lavapipe` on Linux (Arch: `vulkan-swrast`), WARP on Windows.
+Without it wgpu picks the real GPU.
 
 Slim single-renderer builds (smaller binary, no fallback):
 

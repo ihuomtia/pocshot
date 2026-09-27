@@ -121,28 +121,53 @@ fn fallback_args(argv: impl IntoIterator<Item = OsString>) -> Vec<OsString> {
     argv.into_iter().skip(1).collect()
 }
 
-/// Resolve the requested setting against the renderers compiled into this
-/// build. A renderer that is not compiled in can never be selected.
-fn effective(setting: RendererSetting) -> EffectiveRenderer {
-    #[cfg(feature = "gpu")]
-    {
-        match setting {
-            RendererSetting::Software if cfg!(feature = "software") => {
-                EffectiveRenderer::Software
-            }
-            _ => EffectiveRenderer::Gpu,
-        }
-    }
-    #[cfg(not(feature = "gpu"))]
-    {
-        let _ = setting;
-        EffectiveRenderer::Software
+/// True when at least one enumerated wgpu adapter is not a CPU rasterizer.
+/// RDP sessions and GPU-less VMs expose only WARP (`DeviceType::Cpu`).
+/// Only called when the `software` feature is compiled in (the `wgpu`
+/// dep exists only there); runs once, before `run_native`.
+#[cfg(feature = "software")]
+fn has_hardware_adapter() -> bool {
+    let instance = eframe::wgpu::Instance::new(&eframe::wgpu::InstanceDescriptor::default());
+    instance
+        .enumerate_adapters(eframe::wgpu::Backends::all())
+        .iter()
+        .any(|a| a.get_info().device_type != eframe::wgpu::DeviceType::Cpu)
+}
+
+/// `auto` + no hardware adapter (RDP, GPU-less VM) → software directly,
+/// skipping the glow attempt that panics there. Explicit settings win.
+fn effective_with_hardware(setting: RendererSetting, has_hardware: bool) -> EffectiveRenderer {
+    match setting {
+        _ if !cfg!(feature = "gpu") => EffectiveRenderer::Software,
+        RendererSetting::Software if cfg!(feature = "software") => EffectiveRenderer::Software,
+        RendererSetting::Gpu => EffectiveRenderer::Gpu,
+        _ if !has_hardware && cfg!(feature = "software") => EffectiveRenderer::Software,
+        _ => EffectiveRenderer::Gpu,
     }
 }
 
 /// Point `options` at the renderer to use, honoring `POCSHOT_RENDERER`.
 pub(crate) fn apply(options: &mut eframe::NativeOptions) {
-    match effective(current_setting()) {
+    let setting = current_setting();
+    // Probe only when it can change the outcome: `auto` in a build that
+    // carries the software renderer (the `wgpu` dep exists only there).
+    // Explicit settings ignore the probe; gpu-only builds have no dep to
+    // probe with.
+    let probe = setting == RendererSetting::Auto && cfg!(feature = "software");
+    let has_hardware = if probe {
+        #[cfg(feature = "software")]
+        { has_hardware_adapter() }
+        #[cfg(not(feature = "software"))]
+        { true }
+    } else {
+        true // probe result irrelevant — explicit setting or gpu-only build
+    };
+    if probe && !has_hardware {
+        log::info!(
+            "auto renderer: no hardware adapter (RDP / GPU-less) → software, skipping the glow attempt"
+        );
+    }
+    match effective_with_hardware(setting, has_hardware) {
         EffectiveRenderer::Gpu => {
             #[cfg(feature = "gpu")]
             apply_gpu(options);
@@ -384,5 +409,41 @@ mod tests {
             RendererSetting::Software
         );
         assert_eq!(resolve_setting(ForcedRenderer::None, None), RendererSetting::Auto);
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn auto_with_hardware_prefers_glow() {
+        assert!(matches!(
+            effective_with_hardware(RendererSetting::Auto, true),
+            EffectiveRenderer::Gpu
+        ));
+    }
+
+    #[cfg(feature = "software")]
+    #[test]
+    fn auto_without_hardware_goes_software() {
+        assert!(matches!(
+            effective_with_hardware(RendererSetting::Auto, false),
+            EffectiveRenderer::Software
+        ));
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn explicit_gpu_ignores_hardware_probe() {
+        assert!(matches!(
+            effective_with_hardware(RendererSetting::Gpu, false),
+            EffectiveRenderer::Gpu
+        ));
+    }
+
+    #[cfg(feature = "software")]
+    #[test]
+    fn explicit_software_ignores_hardware_probe() {
+        assert!(matches!(
+            effective_with_hardware(RendererSetting::Software, true),
+            EffectiveRenderer::Software
+        ));
     }
 }
