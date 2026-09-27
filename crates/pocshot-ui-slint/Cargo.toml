@@ -10,6 +10,7 @@ image.workspace = true
 log.workspace = true
 pocshot-core = { path = "../pocshot-core" }
 pocshot-annotate = { path = "../pocshot-annotate" }
+pocshot-ocr = { path = "../pocshot-ocr" }
 pocshot-snap = { path = "../pocshot-snap" }
 slint.workspace = true
 

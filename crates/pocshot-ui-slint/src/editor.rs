@@ -4,9 +4,11 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::mpsc;
 
 use image::{imageops, RgbaImage};
 use pocshot_annotate::{effects, Color32, Pos2, Rect, Shape, ToolKind, Vec2};
+use pocshot_ocr::TextRegion;
 use pocshot_snap::SnapLines;
 use slint::{ComponentHandle as _, Image, Rgba8Pixel, SharedPixelBuffer};
 
@@ -66,6 +68,11 @@ pub struct Editor {
     effect_rect: Option<Rect>,
     snap_lines: SnapLines,
     snap_enabled: bool,
+    ocr_rx: Option<mpsc::Receiver<Vec<TextRegion>>>,
+    ocr_regions: Vec<TextRegion>,
+    show_ocr: bool,
+    /// Keeps the OCR poll timer alive.
+    _timer: slint::Timer,
 }
 
 const TEXT_SIZE: f32 = 24.0;
@@ -97,6 +104,10 @@ impl Editor {
             effect_rect: None,
             snap_lines,
             snap_enabled: true,
+            ocr_rx: None,
+            ocr_regions: Vec::new(),
+            show_ocr: false,
+            _timer: slint::Timer::default(),
         }));
 
         {
@@ -114,6 +125,20 @@ impl Editor {
                     editor.borrow_mut().on_key(&text);
                 }
             });
+        }
+        {
+            let weak = Rc::downgrade(&editor);
+            let timer = slint::Timer::default();
+            timer.start(
+                slint::TimerMode::Repeated,
+                std::time::Duration::from_millis(250),
+                move || {
+                    if let Some(editor) = weak.upgrade() {
+                        editor.borrow_mut().poll_ocr();
+                    }
+                },
+            );
+            editor.borrow_mut()._timer = timer;
         }
 
         editor.borrow_mut().rebuild_composited();
@@ -343,6 +368,7 @@ impl Editor {
             "b" => self.set_tool(ToolKind::Blur),
             "m" => self.set_tool(ToolKind::Pixelate),
             "e" => self.set_tool(ToolKind::Eraser),
+            "o" => self.toggle_ocr(),
             "[" => {
                 self.width = (self.width - 1.0).max(1.0);
                 self.refresh_hint();
@@ -411,6 +437,23 @@ impl Editor {
     fn rebuild_composited(&mut self) {
         self.composited = (*self.base).clone();
         render_annotations(&mut self.composited, &self.annotations, Pos2::ZERO);
+        if self.show_ocr {
+            let color = Color32::from_rgb(0, 230, 255);
+            let origin = Pos2::ZERO;
+            for region in &self.ocr_regions {
+                let r = region.rect;
+                let min = Pos2::new(r.x0 + origin.x, r.y0 + origin.y);
+                let max = Pos2::new(r.x1 + origin.x, r.y1 + origin.y);
+                for (a, b) in [
+                    (min, Pos2::new(max.x, min.y)),
+                    (Pos2::new(max.x, min.y), max),
+                    (max, Pos2::new(min.x, max.y)),
+                    (Pos2::new(min.x, max.y), min),
+                ] {
+                    pocshot_annotate::raster::draw_line_on_image(&mut self.composited, a, b, color, 1.0);
+                }
+            }
+        }
         self.ui.set_overlay(to_slint_image(&self.composited));
     }
 
@@ -418,6 +461,73 @@ impl Editor {
         HistoryEntry {
             base: self.base.clone(),
             annotations: self.annotations.clone(),
+        }
+    }
+
+    /// Toggle OCR on the selection: start detection in the background, or hide
+    /// existing regions.
+    fn toggle_ocr(&mut self) {
+        if self.show_ocr {
+            self.show_ocr = false;
+            self.ocr_regions.clear();
+            self.rebuild_composited();
+            return;
+        }
+        let rect = self.selection.intersect(self.image_rect());
+        if rect.width() < 2.0 || rect.height() < 2.0 {
+            log::warn!("selection too small for OCR");
+            return;
+        }
+        let x0 = rect.min.x.floor().max(0.0) as u32;
+        let y0 = rect.min.y.floor().max(0.0) as u32;
+        let x1 = rect.max.x.ceil().min(self.size().x) as u32;
+        let y1 = rect.max.y.ceil().min(self.size().y) as u32;
+        let crop = imageops::crop_imm(self.base.as_ref(), x0, y0, x1 - x0, y1 - y0).to_image();
+        let (tx, rx) = mpsc::channel();
+        self.ocr_rx = Some(rx);
+        log::info!("running OCR on {}x{} selection…", x1 - x0, y1 - y0);
+        std::thread::spawn(move || {
+            use pocshot_ocr::detect::{OcrsDetector, TextDetector};
+            use pocshot_ocr::SourceImage;
+            let dir = pocshot_core::models_dir(None);
+            let result = (|| -> anyhow::Result<Vec<TextRegion>> {
+                let (detection, recognition) = pocshot_ocr::models::ensure_models(&dir)?;
+                let detector = OcrsDetector::new(&detection, &recognition)?;
+                let dynamic = image::DynamicImage::ImageRgba8(crop);
+                detector.detect(&SourceImage::Borrowed(&dynamic))
+            })();
+            match result {
+                Ok(regions) => {
+                    let _ = tx.send(regions);
+                }
+                Err(error) => log::error!("OCR failed: {error}"),
+            }
+        });
+    }
+
+    /// Poll for OCR results (called from a Slint timer).
+    fn poll_ocr(&mut self) {
+        let Some(rx) = &self.ocr_rx else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(regions) => {
+                self.ocr_rx = None;
+                for region in &regions {
+                    log::info!(
+                        "ocr: {:.2} {:?}",
+                        region.confidence,
+                        region.text.as_deref().unwrap_or("")
+                    );
+                }
+                self.ocr_regions = regions;
+                self.show_ocr = true;
+                self.rebuild_composited();
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.ocr_rx = None;
+            }
         }
     }
 
@@ -540,7 +650,7 @@ impl Editor {
         }
         self.ui.set_hint(
             format!(
-                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · N counter · T text · B blur · M pixelate · E eraser · V select · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
+                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · N counter · T text · B blur · M pixelate · E eraser · V select · O OCR · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
                 self.tool,
                 self.color_index(),
                 self.width
