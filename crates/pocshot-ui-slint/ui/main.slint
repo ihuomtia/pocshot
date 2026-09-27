@@ -3,10 +3,30 @@
 //! selection rectangle and the toolbar, and forwards events to Rust. All
 //! editing logic lives in `lib.rs`/`editor.rs`.
 
+export global Theme {
+    in-out property <color> accent: #3a7bd5;
+    in-out property <color> chip-bg: #262626;
+    in-out property <color> chip-hover: #3a3a3a;
+    in-out property <color> chip-border: #3d3d3d;
+    in-out property <color> toolbar-bg: #000000d8;
+    in-out property <color> hint-text: #ffffffdd;
+    in-out property <color> dim: #00000066;
+    in-out property <color> sel-border: #ff3366;
+    in-out property <color> handle: #ffffff;
+    in-out property <color> canvas-bg: #101010;
+    in-out property <color> tooltip-bg: #111111e6;
+    in-out property <color> swatch0: #ff3b30;
+    in-out property <color> swatch1: #ff9500;
+    in-out property <color> swatch2: #ffd60a;
+    in-out property <color> swatch3: #34c759;
+    in-out property <color> swatch4: #0a84ff;
+    in-out property <color> swatch5: #ff2d95;
+}
+
 component Sep inherits Rectangle {
     width: 1px;
     height: 26px;
-    background: #3d3d3d;
+    background: Theme.chip-border;
 }
 
 component Chip inherits Rectangle {
@@ -20,9 +40,9 @@ component Chip inherits Rectangle {
     width: root.chip-width;
     height: 32px;
     border-radius: 6px;
-    border-color: #3d3d3d;
+    border-color: Theme.chip-border;
     border-width: 1px;
-    background: root.active ? #3a7bd5 : (ta.has-hover ? #3a3a3a : root.fill);
+    background: root.active ? Theme.accent : (ta.has-hover ? Theme.chip-hover : root.fill);
 
     Text {
         text: root.label;
@@ -37,13 +57,13 @@ component Chip inherits Rectangle {
         x: root.width / 2 - 90px;
         width: 180px;
         height: 22px;
-        background: #111111e6;
+        background: Theme.tooltip-bg;
         border-radius: 4px;
         Text {
             x: 8px;
             width: parent.width - 16px;
             text: root.tooltip;
-            color: #ffffff;
+            color: Theme.hint-text;
             font-size: 12px;
             vertical-alignment: center;
             overflow: elide;
@@ -69,7 +89,7 @@ component SettingsRow inherits HorizontalLayout {
 
     Text {
         text: root.title;
-        color: #ffffffdd;
+        color: Theme.hint-text;
         font-size: 13px;
         vertical-alignment: center;
         width: 130px;
@@ -97,7 +117,7 @@ component SelHandle inherits Rectangle {
     y: root.hy - 4px;
     width: 8px;
     height: 8px;
-    background: #ffffff;
+    background: Theme.handle;
     border-color: #222222;
     border-width: 1px;
 
@@ -158,7 +178,7 @@ export component EditorWindow inherits Window {
     callback pick-color(int);
     callback action(string);
 
-    background: #101010;
+    background: Theme.canvas-bg;
     no-frame: true;
     always-on-top: true;
     full-screen: root.fullscreen;
@@ -214,28 +234,28 @@ export component EditorWindow inherits Window {
         y: root.shot-ny * root.height;
         width: root.shot-nw * root.width;
         height: (root.sel-ny - root.shot-ny) * root.height;
-        background: #00000066;
+        background: Theme.dim;
     }
     if (root.sel-handles-visible) : Rectangle {
         x: root.shot-nx * root.width;
         y: (root.sel-ny + root.sel-nh) * root.height;
         width: root.shot-nw * root.width;
         height: (root.shot-ny + root.shot-nh - root.sel-ny - root.sel-nh) * root.height;
-        background: #00000066;
+        background: Theme.dim;
     }
     if (root.sel-handles-visible) : Rectangle {
         x: root.shot-nx * root.width;
         y: root.sel-ny * root.height;
         width: (root.sel-nx - root.shot-nx) * root.width;
         height: root.sel-nh * root.height;
-        background: #00000066;
+        background: Theme.dim;
     }
     if (root.sel-handles-visible) : Rectangle {
         x: (root.sel-nx + root.sel-nw) * root.width;
         y: root.sel-ny * root.height;
         width: (root.shot-nx + root.shot-nw - root.sel-nx - root.sel-nw) * root.width;
         height: root.sel-nh * root.height;
-        background: #00000066;
+        background: Theme.dim;
     }
 
     Rectangle {
@@ -245,7 +265,7 @@ export component EditorWindow inherits Window {
         width: root.sel-nw * root.width;
         height: root.sel-nh * root.height;
         background: #00000000;
-        border-color: #ff3366;
+        border-color: Theme.sel-border;
         border-width: 2px;
     }
 
@@ -265,7 +285,7 @@ export component EditorWindow inherits Window {
         y: root.height - 116px;
         width: 100%;
         height: 40px;
-        background: #000000c8;
+        background: Theme.toolbar-bg;
     }
 
     HorizontalLayout {
@@ -297,7 +317,7 @@ export component EditorWindow inherits Window {
         y: root.height - 72px;
         width: 100%;
         height: 44px;
-        background: #000000d8;
+        background: Theme.toolbar-bg;
     }
 
     HorizontalLayout {
@@ -324,18 +344,18 @@ export component EditorWindow inherits Window {
         Chip { label: "⌫"; tooltip: "Eraser (E) - click an annotation"; active: root.active-tool == 14; clicked => { root.tool(14); } }
         Chip { label: "G"; tooltip: "Text border (G) - boxes text regions when OCR ran"; active: root.active-tool == 15; clicked => { root.tool(15); } }
         Sep { }
-        Chip { label: ""; chip-width: 26px; fill: #ff3b30; active: root.active-color == 0; tooltip: "Colour 1"; clicked => { root.pick-color(0); } }
-        Chip { label: ""; chip-width: 26px; fill: #ff9500; active: root.active-color == 1; tooltip: "Colour 2"; clicked => { root.pick-color(1); } }
-        Chip { label: ""; chip-width: 26px; fill: #ffd60a; active: root.active-color == 2; tooltip: "Colour 3"; clicked => { root.pick-color(2); } }
-        Chip { label: ""; chip-width: 26px; fill: #34c759; active: root.active-color == 3; tooltip: "Colour 4"; clicked => { root.pick-color(3); } }
-        Chip { label: ""; chip-width: 26px; fill: #0a84ff; active: root.active-color == 4; tooltip: "Colour 5"; clicked => { root.pick-color(4); } }
-        Chip { label: ""; chip-width: 26px; fill: #ff2d95; active: root.active-color == 5; tooltip: "Colour 6"; clicked => { root.pick-color(5); } }
+        Chip { label: ""; chip-width: 26px; fill: Theme.swatch0; active: root.active-color == 0; tooltip: "Colour 1"; clicked => { root.pick-color(0); } }
+        Chip { label: ""; chip-width: 26px; fill: Theme.swatch1; active: root.active-color == 1; tooltip: "Colour 2"; clicked => { root.pick-color(1); } }
+        Chip { label: ""; chip-width: 26px; fill: Theme.swatch2; active: root.active-color == 2; tooltip: "Colour 3"; clicked => { root.pick-color(2); } }
+        Chip { label: ""; chip-width: 26px; fill: Theme.swatch3; active: root.active-color == 3; tooltip: "Colour 4"; clicked => { root.pick-color(3); } }
+        Chip { label: ""; chip-width: 26px; fill: Theme.swatch4; active: root.active-color == 4; tooltip: "Colour 5"; clicked => { root.pick-color(4); } }
+        Chip { label: ""; chip-width: 26px; fill: Theme.swatch5; active: root.active-color == 5; tooltip: "Colour 6"; clicked => { root.pick-color(5); } }
         Sep { }
         Chip { label: "−"; chip-width: 30px; tooltip: "Thinner stroke ( [ )"; clicked => { root.action("width-"); } }
         Text {
             width: 34px;
             text: root.stroke-width;
-            color: #ffffffdd;
+            color: Theme.hint-text;
             font-size: 13px;
             vertical-alignment: center;
             horizontal-alignment: center;
@@ -351,7 +371,7 @@ export component EditorWindow inherits Window {
         height: 236px;
         background: #161616f2;
         border-radius: 8px;
-        border-color: #3d3d3d;
+        border-color: Theme.chip-border;
         border-width: 1px;
 
         Text {
@@ -384,7 +404,7 @@ export component EditorWindow inherits Window {
                 alignment: start;
                 Text {
                     text: "Text size";
-                    color: #ffffffdd;
+                    color: Theme.hint-text;
                     font-size: 13px;
                     vertical-alignment: center;
                     width: 130px;
@@ -418,7 +438,7 @@ export component EditorWindow inherits Window {
         width: root.width - 24px;
         height: 28px;
         vertical-alignment: center;
-        color: #ffffffdd;
+        color: Theme.hint-text;
         font-size: 13px;
         text: root.hint;
     }

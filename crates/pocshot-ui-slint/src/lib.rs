@@ -163,8 +163,8 @@ fn show_editor(
 
     // Keep the editor alive for as long as the event loop runs: the Slint
     // callbacks only hold a weak reference to it.
-    let editor = editor::Editor::new(ui, image, snap_lines, from_clipboard);
-    editor.borrow().show().context("failed to show the window")?;
+    let settings = pocshot_config::config::load();
+    let editor = editor::Editor::new(ui, image, snap_lines, from_clipboard, settings);    editor.borrow().show().context("failed to show the window")?;
     // The window size is only known once shown, so publish the image placement
     // after that.
     editor.borrow().refresh_layout();

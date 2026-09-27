@@ -16,7 +16,7 @@ use pocshot_snap::SnapLines;
 use slint::{ComponentHandle as _, Image, Rgba8Pixel, SharedPixelBuffer};
 
 use crate::platform;
-use crate::EditorWindow;
+use crate::{EditorWindow, Theme};
 
 /// Annotation colour presets (keys 1..6).
 const PALETTE: [Color32; 6] = [
@@ -94,14 +94,20 @@ pub struct Editor {
     text_size: f32,
     /// True when the image came from the clipboard (affects Refresh).
     source_is_clipboard: bool,
+    settings: pocshot_config::AppSettings,
+    /// Colour presets in use (theme swatches, falling back to the built-ins).
+    palette: [Color32; 6],
 }
 
 /// Padding around detected text regions for the highlight-text tool.
 const TEXT_BORDER_PADDING: f32 = 6.0;
 /// Redact boxes only pad vertically by one pixel.
 const REDACT_VERTICAL_PADDING: f32 = 1.0;
-/// Default/new text annotation size; adjustable in settings.
-const DEFAULT_TEXT_SIZE: f32 = 24.0;
+
+/// Convert an `ecolor::Color32` to a Slint colour.
+fn to_slint_color(color: Color32) -> slint::Color {
+    slint::Color::from_argb_u8(color.a(), color.r(), color.g(), color.b())
+}
 
 /// Outer bounding box of a rectangle-like shape.
 fn shape_bounds(shape: &Shape) -> Option<Rect> {
@@ -156,7 +162,23 @@ impl Editor {
         base: RgbaImage,
         snap_lines: SnapLines,
         source_is_clipboard: bool,
+        settings: pocshot_config::AppSettings,
     ) -> Rc<RefCell<Self>> {
+        let text_size = settings.theme.fonts.annotation_text;
+        let copy_on_save = settings.copy_on_save;
+        let snap_enabled = settings.snap_enabled;
+        let default_color = settings.theme.colors.default_annotation_color;
+        let mut palette = PALETTE;
+        for (index, color) in settings
+            .theme
+            .colors
+            .color_swatches
+            .iter()
+            .take(6)
+            .enumerate()
+        {
+            palette[index] = *color;
+        }
         let size = Vec2::new(base.width() as f32, base.height() as f32);
         let composited = base.clone();
         let editor = Rc::new(RefCell::new(Self {
@@ -167,7 +189,7 @@ impl Editor {
             current: None,
             locked_angle: None,
             tool: ToolKind::Select,
-            color: PALETTE[0],
+            color: default_color,
             width: 3.0,
             selection: Rect::from_min_size(Pos2::ZERO, size),
             select_anchor: Pos2::ZERO,
@@ -184,7 +206,7 @@ impl Editor {
             effect_anchor: Pos2::ZERO,
             effect_rect: None,
             snap_lines,
-            snap_enabled: true,
+            snap_enabled,
             snap_x: None,
             snap_y: None,
             ocr_rx: None,
@@ -192,10 +214,12 @@ impl Editor {
             ocr_origin: Pos2::ZERO,
             show_ocr: false,
             _timer: slint::Timer::default(),
-            copy_on_save: false,
+            copy_on_save,
             settings_visible: false,
-            text_size: DEFAULT_TEXT_SIZE,
+            text_size,
             source_is_clipboard,
+            settings,
+            palette,
         }));
 
         {
@@ -231,7 +255,7 @@ impl Editor {
             editor.borrow().ui.on_pick_color(move |index| {
                 if let Some(editor) = weak.upgrade() {
                     let mut editor = editor.borrow_mut();
-                    if let Some(color) = PALETTE.get(index.max(0) as usize) {
+                    if let Some(color) = editor.palette.get(index.max(0) as usize) {
                         editor.color = *color;
                         editor.refresh_hint();
                     }
@@ -265,7 +289,36 @@ impl Editor {
         editor.borrow().refresh_selection();
         editor.borrow().refresh_preview();
         editor.borrow().refresh_hint();
+        editor.borrow().apply_theme();
         editor
+    }
+
+    /// Push the theme colours into the Slint global.
+    fn apply_theme(&self) {
+        let theme = self.ui.global::<Theme>();
+        let colors = &self.settings.theme.colors;
+        theme.set_accent(to_slint_color(colors.accent));
+        theme.set_chip_bg(to_slint_color(colors.button_bg_idle));
+        theme.set_chip_hover(to_slint_color(colors.button_bg_hover));
+        theme.set_chip_border(to_slint_color(colors.button_bg_disabled));
+        theme.set_toolbar_bg(to_slint_color(colors.toolbar_bg));
+        theme.set_hint_text(to_slint_color(colors.hint_text));
+        theme.set_dim(to_slint_color(colors.overlay_dim));
+        theme.set_sel_border(to_slint_color(colors.selection_border));
+        theme.set_handle(to_slint_color(colors.handle_idle));
+        theme.set_canvas_bg(to_slint_color(colors.canvas_bg));
+        theme.set_tooltip_bg(to_slint_color(colors.tooltip_bg));
+        theme.set_swatch0(to_slint_color(self.palette[0]));
+        theme.set_swatch1(to_slint_color(self.palette[1]));
+        theme.set_swatch2(to_slint_color(self.palette[2]));
+        theme.set_swatch3(to_slint_color(self.palette[3]));
+        theme.set_swatch4(to_slint_color(self.palette[4]));
+        theme.set_swatch5(to_slint_color(self.palette[5]));
+    }
+
+    /// Write the current settings back to disk (best effort).
+    fn persist_settings(&self) {
+        pocshot_config::config::save(&self.settings);
     }
 
     /// Show the window (the editor must exist first so its properties are set).
@@ -508,10 +561,14 @@ impl Editor {
             }
             "text-size-" => {
                 self.text_size = (self.text_size - 2.0).max(8.0);
+                self.settings.theme.fonts.annotation_text = self.text_size;
+                self.persist_settings();
                 self.refresh_hint();
             }
             "text-size+" => {
                 self.text_size = (self.text_size + 2.0).min(72.0);
+                self.settings.theme.fonts.annotation_text = self.text_size;
+                self.persist_settings();
                 self.refresh_hint();
             }
             "undo" => self.undo(),
@@ -538,10 +595,14 @@ impl Editor {
             }
             "copy-save" => {
                 self.copy_on_save = !self.copy_on_save;
+                self.settings.copy_on_save = self.copy_on_save;
+                self.persist_settings();
                 self.refresh_hint();
             }
             "snap" => {
                 self.snap_enabled = !self.snap_enabled;
+                self.settings.snap_enabled = self.snap_enabled;
+                self.persist_settings();
                 self.refresh_hint();
             }
             "quit" => crate::quit_event_loop(),
@@ -1002,7 +1063,7 @@ impl Editor {
         self.ui
             .set_active_tool(self.tool_index());
         self.ui
-            .set_active_color(PALETTE.iter().position(|c| *c == self.color).unwrap_or(0) as i32);
+            .set_active_color(self.palette.iter().position(|c| *c == self.color).unwrap_or(0) as i32);
         self.ui.set_stroke_width(self.width as i32);
         self.ui.set_text_size(self.text_size as i32);
         self.ui
@@ -1027,7 +1088,7 @@ impl Editor {
     }
 
     fn color_index(&self) -> usize {
-        PALETTE
+        self.palette
             .iter()
             .position(|c| *c == self.color)
             .map(|i| i + 1)

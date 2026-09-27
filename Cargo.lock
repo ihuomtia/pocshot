@@ -4763,6 +4763,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pocshot-config"
+version = "0.1.0"
+dependencies = [
+ "ecolor",
+ "log",
+ "pocshot-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pocshot-core"
 version = "0.1.0"
 dependencies = [
@@ -4833,6 +4844,7 @@ dependencies = [
  "image",
  "log",
  "pocshot-annotate",
+ "pocshot-config",
  "pocshot-core",
  "pocshot-ocr",
  "pocshot-snap",

@@ -8,6 +8,7 @@ members = [
     "crates/pocshot-tray",
     "crates/pocshot-ui-slint",
     "crates/pocshot-annotate",
+    "crates/pocshot-config",
 ]
 resolver = "2"
 
