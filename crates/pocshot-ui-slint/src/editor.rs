@@ -101,12 +101,19 @@ pub struct Editor {
     help_visible: bool,
     /// Transient status message shown in the hint bar.
     status: Option<String>,
+    /// Toolbar rect in window pixels (for hit-testing).
+    toolbar_rect: Rect,
 }
 
 /// Padding around detected text regions for the highlight-text tool.
 const TEXT_BORDER_PADDING: f32 = 6.0;
 /// Redact boxes only pad vertically by one pixel.
 const REDACT_VERTICAL_PADDING: f32 = 1.0;
+/// Approximate toolbar block size (window px); used to place it near the
+/// selection and to ignore canvas pointer events over it.
+const TOOLBAR_W: f32 = 1060.0;
+const TOOLBAR_H: f32 = 88.0;
+const TOOLBAR_MARGIN: f32 = 8.0;
 
 /// Shortcut reference shown by the help overlay (?, /).
 const HELP_TEXT: &str = "\
@@ -237,6 +244,7 @@ impl Editor {
             ocr_confidence: ocr_confidence.clamp(0.1, 0.95),
             help_visible: false,
             status: None,
+            toolbar_rect: Rect::NOTHING,
         }));
 
         {
@@ -436,7 +444,7 @@ impl Editor {
     }
 
     fn on_pointer(&mut self, nx: f32, ny: f32, phase: i32) {
-        if self.pointer_in_toolbar(ny) {
+        if self.pointer_in_toolbar(nx, ny) {
             return;
         }
         self.status = None;
@@ -568,6 +576,7 @@ impl Editor {
 
         self.refresh_selection();
         self.refresh_preview();
+        self.refresh_toolbar();
         self.refresh_hint();
     }
 
@@ -614,6 +623,7 @@ impl Editor {
             "clear-selection" => {
                 self.selection = self.image_rect();
                 self.refresh_selection();
+                self.refresh_toolbar();
             }
             "settings" => {
                 self.settings_visible = !self.settings_visible;
@@ -686,11 +696,56 @@ impl Editor {
         }
     }
 
-    /// True when the normalised `ny` falls inside the toolbar band, where
-    /// pointer events belong to buttons rather than the canvas.
-    fn pointer_in_toolbar(&self, ny: f32) -> bool {
+    /// Selection rect in window pixels.
+    fn selection_window_px(&self) -> Rect {
+        let display = self.display_rect();
         let win = self.window_size();
-        win.y > 0.0 && ny * win.y > win.y - 116.0
+        let image = self.size();
+        let to_win = |p: Pos2| {
+            Pos2::new(
+                display.min.x * win.x + p.x / image.x * display.width() * win.x,
+                display.min.y * win.y + p.y / image.y * display.height() * win.y,
+            )
+        };
+        Rect::from_min_max(to_win(self.selection.min), to_win(self.selection.max))
+    }
+
+    /// Place the toolbar under the selection (above it when there is no room,
+    /// inside its bottom edge otherwise), like the egui build.
+    pub(crate) fn refresh_toolbar(&mut self) {
+        let win = self.window_size();
+        if win.x <= 0.0 || win.y <= 0.0 {
+            return;
+        }
+        let sel = self.selection_window_px();
+        let hint_h = 28.0;
+        let max_y = (win.y - hint_h - TOOLBAR_H - TOOLBAR_MARGIN).max(0.0);
+
+        let below = sel.max.y + TOOLBAR_MARGIN;
+        let above = sel.min.y - TOOLBAR_H - TOOLBAR_MARGIN;
+        let y = if below <= max_y {
+            below
+        } else if above >= 0.0 {
+            above
+        } else {
+            (sel.max.y - TOOLBAR_H - TOOLBAR_MARGIN).clamp(0.0, max_y)
+        };
+        let x = sel.min.x.clamp(0.0, (win.x - TOOLBAR_W).max(0.0));
+
+        self.ui.set_toolbar_x(x);
+        self.ui.set_toolbar_y(y);
+        self.ui.set_toolbar_width(TOOLBAR_W);
+        self.toolbar_rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(TOOLBAR_W, TOOLBAR_H));
+    }
+
+    /// True when the normalised pointer position falls over the toolbar.
+    fn pointer_in_toolbar(&self, nx: f32, ny: f32) -> bool {
+        let win = self.window_size();
+        if win.x <= 0.0 || win.y <= 0.0 {
+            return false;
+        }
+        self.toolbar_rect
+            .contains(Pos2::new(nx * win.x, ny * win.y))
     }
 
     /// Re-capture (or re-read the clipboard) from scratch: hide, respawn a
@@ -746,6 +801,7 @@ impl Editor {
             } else {
                 self.selection = self.image_rect();
                 self.refresh_selection();
+                self.refresh_toolbar();
                 self.refresh_hint();
             }
             return;

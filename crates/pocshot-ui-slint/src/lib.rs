@@ -168,6 +168,7 @@ fn show_editor(
     // The window size is only known once shown, so publish the image placement
     // after that.
     editor.borrow().refresh_layout();
+    editor.borrow_mut().refresh_toolbar();
     slint::run_event_loop().context("Slint event loop failed")
 }
 

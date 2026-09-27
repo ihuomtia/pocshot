@@ -124,14 +124,16 @@ component SelHandle inherits Rectangle {
     ta := TouchArea {
         mouse-cursor: root.cursor;
         pointer-event(e) => {
+            // Coordinates are relative to this handle; add its own origin to get
+            // window coordinates.
             if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
-                root.pointer(ta.mouse-x / root.win-w, ta.mouse-y / root.win-h, 0);
+                root.pointer((root.hx - 4px + ta.mouse-x) / root.win-w, (root.hy - 4px + ta.mouse-y) / root.win-h, 0);
             }
             if (e.kind == PointerEventKind.move) {
-                root.pointer(ta.mouse-x / root.win-w, ta.mouse-y / root.win-h, 1);
+                root.pointer((root.hx - 4px + ta.mouse-x) / root.win-w, (root.hy - 4px + ta.mouse-y) / root.win-h, 1);
             }
             if (e.kind == PointerEventKind.up) {
-                root.pointer(ta.mouse-x / root.win-w, ta.mouse-y / root.win-h, 2);
+                root.pointer((root.hx - 4px + ta.mouse-x) / root.win-w, (root.hy - 4px + ta.mouse-y) / root.win-h, 2);
             }
         }
     }
@@ -176,6 +178,11 @@ export component EditorWindow inherits Window {
     // Help overlay.
     in property <bool> help-visible: false;
     in property <string> help-text: "";
+    // Toolbar placement (window pixels), computed in Rust to follow the
+    // selection like the egui toolbar does.
+    in property <length> toolbar-x: 8px;
+    in property <length> toolbar-y: 0px;
+    in property <length> toolbar-width: 1060px;
 
     // phase: 0 = down, 1 = move, 2 = up. Coordinates are normalised 0..1.
     callback pointer(float, float, int);
@@ -287,17 +294,18 @@ export component EditorWindow inherits Window {
 
     // Toolbar, row 1: actions.
     Rectangle {
-        x: 0;
-        y: root.height - 116px;
-        width: 100%;
+        x: root.toolbar-x;
+        y: root.toolbar-y;
+        width: root.toolbar-width;
         height: 40px;
+        border-radius: 6px;
         background: Theme.toolbar-bg;
     }
 
     HorizontalLayout {
-        x: 8px;
-        y: root.height - 116px;
-        height: 40px;
+        x: root.toolbar-x + 8px;
+        y: root.toolbar-y + 4px;
+        height: 32px;
         spacing: 4px;
         alignment: start;
 
@@ -320,17 +328,18 @@ export component EditorWindow inherits Window {
 
     // Toolbar, row 2: tools + colours + width.
     Rectangle {
-        x: 0;
-        y: root.height - 72px;
-        width: 100%;
+        x: root.toolbar-x;
+        y: root.toolbar-y + 44px;
+        width: root.toolbar-width;
         height: 44px;
+        border-radius: 6px;
         background: Theme.toolbar-bg;
     }
 
     HorizontalLayout {
-        x: 8px;
-        y: root.height - 72px;
-        height: 44px;
+        x: root.toolbar-x + 8px;
+        y: root.toolbar-y + 50px;
+        height: 32px;
         spacing: 4px;
         alignment: start;
 
