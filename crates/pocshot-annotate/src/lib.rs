@@ -9,8 +9,11 @@ pub mod constrain;
 pub mod counter_font;
 pub mod effects;
 pub mod raster;
+pub mod selection;
 pub mod shapes;
 pub mod tool_kind;
+
+pub use selection::{handle_at, handle_rects, resize, HandleType, HANDLE_SIZE};
 
 pub use ecolor::Color32;
 pub use emath::{pos2, vec2, Pos2, Rect, Vec2};

@@ -32,6 +32,21 @@ component Chip inherits Rectangle {
     }
 }
 
+component SelHandle inherits Rectangle {
+    in property <bool> show: false;
+    in property <length> hx;
+    in property <length> hy;
+
+    visible: root.show;
+    x: root.hx - 4px;
+    y: root.hy - 4px;
+    width: 8px;
+    height: 8px;
+    background: #ffffff;
+    border-color: #222222;
+    border-width: 1px;
+}
+
 export component EditorWindow inherits Window {
     in property <image> shot;
     in property <image> overlay;
@@ -53,6 +68,7 @@ export component EditorWindow inherits Window {
     in property <float> sel-nw;
     in property <float> sel-nh;
     in property <bool> sel-visible;
+    in property <bool> sel-handles-visible: false;
     in property <string> hint;
     in property <int> active-tool: 0;
     in property <int> active-color: 0;
@@ -111,6 +127,16 @@ export component EditorWindow inherits Window {
         border-color: #ff3366;
         border-width: 2px;
     }
+
+    // Selection resize handles: 4 corners + 4 edge midpoints.
+    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: root.sel-ny * root.height; }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw / 2) * root.width; hy: root.sel-ny * root.height; }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: root.sel-ny * root.height; }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: (root.sel-ny + root.sel-nh / 2) * root.height; }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw / 2) * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; }
+    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; }
+    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh / 2) * root.height; }
 
     ta := TouchArea {
         pointer-event(e) => {

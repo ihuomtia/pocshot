@@ -27,7 +27,9 @@ pub fn draw_line_on_image(
     let dy = end.y - start.y;
     let len = dx.hypot(dy).max(1.0);
     let steps = (len * 2.0).ceil() as i32;
-    let w = width.max(1.0) as i32;
+    // Stamping radius: the run of covered pixels is 2w+1 wide, so choose w so
+    // the thickness matches `width` (1 -> 1 px, 3 -> 3 px, ...).
+    let w = ((width.max(1.0) - 1.0) / 2.0).ceil() as i32;
     let rgba = Rgba([color.r(), color.g(), color.b(), color.a()]);
 
     for i in 0..=steps {
@@ -177,6 +179,46 @@ pub fn fill_triangle_on_image(image: &mut RgbaImage, a: Pos2, b: Pos2, c: Pos2, 
             if u >= 0.0 && v >= 0.0 && u + v <= 1.0 {
                 blend_pixel(image, x as u32, y as u32, rgba);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ecolor::Color32;
+    use emath::pos2;
+    use image::Rgba;
+
+    fn blank(w: u32, h: u32) -> RgbaImage {
+        RgbaImage::from_pixel(w, h, Rgba([0, 0, 0, 255]))
+    }
+
+    fn run_width(image: &RgbaImage, y: u32) -> usize {
+        let row: Vec<bool> = (0..image.width())
+            .map(|x| image.get_pixel(x, y).0[0] != 0)
+            .collect();
+        let first = row.iter().position(|&c| c).unwrap();
+        let last = row.iter().rposition(|&c| c).unwrap();
+        last - first + 1
+    }
+
+    #[test]
+    fn line_thickness_matches_width() {
+        for width in [1.0f32, 2.0, 3.0, 5.0] {
+            let mut image = blank(40, 40);
+            draw_line_on_image(
+                &mut image,
+                pos2(20.0, 10.0),
+                pos2(20.0, 30.0),
+                Color32::WHITE,
+                width,
+            );
+            let run = run_width(&image, 20);
+            assert!(
+                (run as f32 - width).abs() <= 1.0,
+                "width {width} rendered {run} px"
+            );
         }
     }
 }

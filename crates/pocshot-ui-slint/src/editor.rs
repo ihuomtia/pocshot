@@ -7,7 +7,10 @@ use std::rc::Rc;
 use std::sync::mpsc;
 
 use image::{imageops, RgbaImage};
-use pocshot_annotate::{effects, Color32, Pos2, Rect, Shape, ToolKind, Vec2};
+use pocshot_annotate::{
+    effects, handle_at, resize as resize_selection, Color32, HandleType, Pos2, Rect, Shape,
+    ToolKind, Vec2,
+};
 use pocshot_ocr::TextRegion;
 use pocshot_snap::SnapLines;
 use slint::{ComponentHandle as _, Image, Rgba8Pixel, SharedPixelBuffer};
@@ -58,6 +61,8 @@ pub struct Editor {
     moving_selection: bool,
     move_anchor: Pos2,
     move_origin: Rect,
+    /// Resizing the selection via one of its handles.
+    resizing: Option<HandleType>,
     counter: u32,
     /// True while a text annotation is being typed (key events go to the buffer).
     typing_text: bool,
@@ -155,6 +160,7 @@ impl Editor {
             moving_selection: false,
             move_anchor: Pos2::ZERO,
             move_origin: Rect::NOTHING,
+            resizing: None,
             counter: 1,
             typing_text: false,
             history: Vec::new(),
@@ -262,6 +268,17 @@ impl Editor {
             && (self.selection.height() - image.height()).abs() < 1.0
     }
 
+    /// Clamp a selection to the image, keeping it at least 1 px in size.
+    fn clamp_selection(&self, rect: Rect) -> Rect {
+        let size = self.size();
+        let mut r = rect;
+        r.min.x = r.min.x.clamp(0.0, (size.x - 1.0).max(0.0));
+        r.max.x = r.max.x.clamp(r.min.x + 1.0, size.x);
+        r.min.y = r.min.y.clamp(0.0, (size.y - 1.0).max(0.0));
+        r.max.y = r.max.y.clamp(r.min.y + 1.0, size.y);
+        r
+    }
+
     fn window_size(&self) -> Vec2 {
         let size = self.ui.window().size();
         Vec2::new(size.width as f32, size.height as f32)
@@ -356,10 +373,13 @@ impl Editor {
             0 => {
                 self.locked_angle = None;
                 if self.tool == ToolKind::Select {
-                    // A full-image selection counts as "no selection": dragging
-                    // anywhere starts a new one. Otherwise dragging inside the
-                    // existing selection moves it.
-                    if self.selection.contains(pos) && !self.selection_is_full() {
+                    // Handles first, then move, then a fresh selection. A
+                    // full-image selection counts as "no selection".
+                    if let Some(handle) =
+                        (!self.selection_is_full()).then(|| handle_at(self.selection, pos)).flatten()
+                    {
+                        self.resizing = Some(handle);
+                    } else if self.selection.contains(pos) && !self.selection_is_full() {
                         self.moving_selection = true;
                         self.move_anchor = pos;
                         self.move_origin = self.selection;
@@ -383,9 +403,16 @@ impl Editor {
                 }
             }
             1 => {
-                if self.moving_selection {
+                if let Some(handle) = self.resizing {
+                    self.selection = self
+                        .clamp_selection(resize_selection(self.selection, handle, pos));
+                } else if self.moving_selection {
                     let delta = pos - self.move_anchor;
-                    self.selection = translate_clamped(self.move_origin, delta, self.image_rect());
+                    self.selection = self.clamp_selection(translate_clamped(
+                        self.move_origin,
+                        delta,
+                        self.image_rect(),
+                    ));
                 } else if self.selecting {
                     self.selection = Rect::from_two_pos(self.select_anchor, pos);
                 } else if self.effect_rect.is_some() {
@@ -395,7 +422,9 @@ impl Editor {
                 }
             }
             2 => {
-                if self.moving_selection {
+                if self.resizing.is_some() {
+                    self.resizing = None;
+                } else if self.moving_selection {
                     self.moving_selection = false;
                 } else if self.selecting {
                     self.selecting = false;
@@ -859,6 +888,7 @@ impl Editor {
         self.ui.set_sel_nw(nw);
         self.ui.set_sel_nh(nh);
         self.ui.set_sel_visible(true);
+        self.ui.set_sel_handles_visible(!self.selection_is_full());
     }
 
     fn refresh_hint(&self) {
