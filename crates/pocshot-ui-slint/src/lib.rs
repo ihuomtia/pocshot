@@ -46,14 +46,29 @@ pub fn run() -> Result<()> {
         lines.vertical.len(),
         started.elapsed().as_millis()
     );
-    show_editor(image, lines)
+    show_editor(
+        image,
+        lines,
+        Some((monitor.x, monitor.y, monitor.width, monitor.height)),
+    )
 }
 
 /// Open the editor on an image supplied by the caller (edit-clipboard flow).
 pub fn run_edit(image: RgbaImage) -> Result<()> {
     init_backend().context("failed to select a Slint backend")?;
     let lines = pocshot_snap::detect_snap_lines(&image, &pocshot_snap::SnapConfig::default());
-    show_editor(image, lines)
+    let placement = pocshot_core::list_monitors().ok().and_then(|monitors| {
+        let monitor = monitors
+            .iter()
+            .find(|m| m.is_primary)
+            .or_else(|| monitors.first())?;
+        let width = image.width().min(monitor.width);
+        let height = image.height().min(monitor.height);
+        let x = monitor.x + ((monitor.width - width) / 2) as i32;
+        let y = monitor.y + ((monitor.height - height) / 2) as i32;
+        Some((x, y, width, height))
+    });
+    show_editor(image, lines, placement)
 }
 
 /// Force the software renderer for this process (`--software`).
@@ -100,9 +115,23 @@ fn init_backend() -> Result<(), slint::PlatformError> {
     }
 }
 
-fn show_editor(image: RgbaImage, snap_lines: pocshot_snap::SnapLines) -> Result<()> {
+fn show_editor(
+    image: RgbaImage,
+    snap_lines: pocshot_snap::SnapLines,
+    placement: Option<(i32, i32, u32, u32)>,
+) -> Result<()> {
     let ui = EditorWindow::new().context("failed to create the Slint window")?;
     ui.set_shot(editor::to_slint_image(&image));
+
+    // Put the window on the captured monitor (or centred for clipboard edits).
+    // Without a known target, fall back to fullscreen.
+    match placement {
+        Some((x, y, w, h)) => {
+            ui.window().set_position(slint::PhysicalPosition::new(x, y));
+            ui.window().set_size(slint::PhysicalSize::new(w, h));
+        }
+        None => ui.set_fullscreen(true),
+    }
 
     // Keep the editor alive for as long as the event loop runs: the Slint
     // callbacks only hold a weak reference to it.

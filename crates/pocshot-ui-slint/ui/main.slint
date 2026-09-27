@@ -56,6 +56,8 @@ export component EditorWindow inherits Window {
     in property <string> hint;
     in property <int> active-tool: 0;
     in property <int> active-color: 0;
+    /// Fall back to fullscreen when no explicit placement is known.
+    in property <bool> fullscreen: false;
 
     // phase: 0 = down, 1 = move, 2 = up. Coordinates are normalised 0..1.
     callback pointer(float, float, int);
@@ -66,7 +68,8 @@ export component EditorWindow inherits Window {
 
     background: #101010;
     no-frame: true;
-    full-screen: true;
+    always-on-top: true;
+    full-screen: root.fullscreen;
     title: "Pocshot";
 
     init => {
