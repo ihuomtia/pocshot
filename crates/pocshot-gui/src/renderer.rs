@@ -153,7 +153,7 @@ pub(crate) fn apply(options: &mut eframe::NativeOptions) {
     // carries the software renderer (the `wgpu` dep exists only there).
     // Explicit settings ignore the probe; gpu-only builds have no dep to
     // probe with.
-    let probe = setting == RendererSetting::Auto && cfg!(feature = "software");
+    let probe = setting == RendererSetting::Auto && cfg!(feature = "software") && cfg!(feature = "gpu");
     let has_hardware = if probe {
         #[cfg(feature = "software")]
         { has_hardware_adapter() }

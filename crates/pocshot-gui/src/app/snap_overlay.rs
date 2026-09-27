@@ -8,7 +8,6 @@ use crate::app::PocshotApp;
 
 /// Bake snap guides into a transparent overlay at capture resolution,
 /// one straight 1px line per guide (unmultiplied alpha). Pure function.
-/// Stub for now — the real body arrives in Step 3.
 pub(crate) fn bake_snap_overlay(
     width: u32,
     height: u32,

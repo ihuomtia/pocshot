@@ -124,7 +124,11 @@ impl PocshotApp {
         if status.is_empty() {
             return;
         }
-        if !self.status_galley.as_ref().is_some_and(|(s, _)| s == status) {
+        if !self
+            .status_galley
+            .as_ref()
+            .is_some_and(|(s, generation, _)| s == status && *generation == self.theme_generation)
+        {
             let layout_job = egui::text::LayoutJob::simple(
                 status.to_string(),
                 egui::FontId::proportional(self.theme.fonts.status),
@@ -132,9 +136,9 @@ impl PocshotApp {
                 f32::INFINITY,
             );
             let galley = painter.layout_job(layout_job);
-            self.status_galley = Some((status.to_string(), galley));
+            self.status_galley = Some((status.to_string(), self.theme_generation, galley));
         }
-        let galley = self.status_galley.as_ref().unwrap().1.clone(); // Arc clone, cheap
+        let galley = self.status_galley.as_ref().unwrap().2.clone(); // Arc clone, cheap
         let max_w = (draw_rect.width() - 16.0).max(40.0);
         let g_w = galley.size().x.min(max_w);
         let g_h = galley.size().y;

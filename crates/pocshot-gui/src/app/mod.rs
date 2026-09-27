@@ -269,9 +269,10 @@ struct PocshotApp {
     snap_lines_generation: u64,
     theme_generation: u64,
     /// Cached layout for the status pill so the galley is rebuilt only when
-    /// the status text changes. Stored as an `Arc` because egui returns the
-    /// layout as `Arc<Galley>` and `Painter::galley` accepts the same.
-    status_galley: Option<(String, Arc<egui::Galley>)>,
+    /// the status text or theme generation changes. Stored as an `Arc` because
+    /// egui returns the layout as `Arc<Galley>` and `Painter::galley` accepts
+    /// the same.
+    status_galley: Option<(String, u64, Arc<egui::Galley>)>,
 }
 
 impl PocshotApp {
@@ -868,7 +869,7 @@ impl eframe::App for PocshotApp {
 
         if let Some(t) = self.last_frame {
             let dt = t.elapsed();
-            if dt > Duration::from_millis(100) {
+            if dt > Duration::from_millis(100) && ctx.has_requested_repaint() {
                 log::warn!("slow frame: {dt:?}");
             } else {
                 log::debug!("frame: {dt:?}");
@@ -878,17 +879,23 @@ impl eframe::App for PocshotApp {
 
         self.poll_capture(ctx);
         if let Some(rx) = &self.snap_lines_rx {
-            if let Ok(sl) = rx.try_recv() {
-                log::info!(
-                    "snap lines ready: {} h-snaps, {} v-snaps",
-                    sl.horizontal.len(),
-                    sl.vertical.len()
-                );
-                self.snap_lines = Some(sl);
-                self.snap_lines_generation += 1;
-                self.snap_lines_rx = None;
-            } else {
-                ctx.request_repaint_after(WORKER_WATCHDOG_INTERVAL);
+            match rx.try_recv() {
+                Ok(sl) => {
+                    log::info!(
+                        "snap lines ready: {} h-snaps, {} v-snaps",
+                        sl.horizontal.len(),
+                        sl.vertical.len()
+                    );
+                    self.snap_lines = Some(sl);
+                    self.snap_lines_generation += 1;
+                    self.snap_lines_rx = None;
+                }
+                Err(mpsc::TryRecvError::Empty) => {
+                    ctx.request_repaint_after(WORKER_WATCHDOG_INTERVAL);
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.snap_lines_rx = None;
+                }
             }
         }
 
@@ -898,7 +905,7 @@ impl eframe::App for PocshotApp {
         self.refresh_snap_overlay(ctx);
 
         let snap_ok = self.snap_enabled && !ctx.input(|i| i.modifiers.shift);
-        let models_dir_before = self.ocr_models_dir.clone();
+        let models_dir_before = self.show_settings.then(|| self.ocr_models_dir.clone());
 
         // Clone the theme so the painting closures below can borrow it freely
         // while `self` is borrowed mutably (same pattern as `status`).
@@ -1159,7 +1166,7 @@ impl eframe::App for PocshotApp {
                 if settings_changed {
                     self.persist_settings();
                 }
-                if self.ocr_models_dir != models_dir_before {
+                if models_dir_before.is_some_and(|before| self.ocr_models_dir != before) {
                     self.ocr_detector = None;
                     self.ocr_regions.clear();
                     self.ocr_raw_regions.clear();
