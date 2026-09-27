@@ -308,6 +308,9 @@ impl Editor {
         editor.borrow().refresh_hint();
         editor.borrow().apply_theme();
         editor.borrow().ui.set_help_text(HELP_TEXT.into());
+        if editor.borrow().settings.ocr_enabled {
+            editor.borrow_mut().toggle_ocr();
+        }
         editor
     }
 
@@ -673,6 +676,11 @@ impl Editor {
                 self.rebuild_composited();
                 self.refresh_hint();
             }
+            "auto-ocr" => {
+                self.settings.ocr_enabled = !self.settings.ocr_enabled;
+                self.persist_settings();
+                self.refresh_hint();
+            }
             "quit" => crate::quit_event_loop(),
             _ => {}
         }
@@ -918,9 +926,13 @@ impl Editor {
         if self.show_ocr {
             self.show_ocr = false;
             self.ocr_regions.clear();
+            self.settings.show_text_boxes = false;
+            self.persist_settings();
             self.rebuild_composited();
             return;
         }
+        self.settings.show_text_boxes = true;
+        self.persist_settings();
         let rect = self.selection.intersect(self.image_rect());
         if rect.width() < 2.0 || rect.height() < 2.0 {
             log::warn!("selection too small for OCR");
@@ -1173,6 +1185,9 @@ impl Editor {
             .set_snap_value(if self.snap_enabled { "on" } else { "off" }.into());
         self.ui.set_guides_value(
             if self.settings.show_snap_lines { "on" } else { "off" }.into(),
+        );
+        self.ui.set_auto_ocr_value(
+            if self.settings.ocr_enabled { "on" } else { "off" }.into(),
         );
         if self.typing_text {
             self.ui.set_hint(

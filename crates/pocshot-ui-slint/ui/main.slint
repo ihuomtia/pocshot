@@ -169,6 +169,7 @@ export component EditorWindow inherits Window {
     in property <string> copy-save-value: "off";
     in property <string> snap-value: "on";
     in property <string> guides-value: "on";
+    in property <string> auto-ocr-value: "off";
     in property <int> text-size: 24;
     in property <int> stroke-width: 3;
     in property <string> ocr-confidence-value: "0.50";
@@ -408,6 +409,11 @@ export component EditorWindow inherits Window {
                 title: "Show guides";
                 value: root.guides-value;
                 toggled => { root.action("guides"); }
+            }
+            SettingsRow {
+                title: "Auto OCR";
+                value: root.auto-ocr-value;
+                toggled => { root.action("auto-ocr"); }
             }
             HorizontalLayout {
                 height: 34px;
