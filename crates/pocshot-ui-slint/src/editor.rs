@@ -161,6 +161,13 @@ impl Editor {
         Rect::from_min_size(Pos2::ZERO, self.size())
     }
 
+    /// True when the selection covers the whole image (the initial state).
+    fn selection_is_full(&self) -> bool {
+        let image = self.image_rect();
+        (self.selection.width() - image.width()).abs() < 1.0
+            && (self.selection.height() - image.height()).abs() < 1.0
+    }
+
     fn window_size(&self) -> Vec2 {
         let size = self.ui.window().size();
         Vec2::new(size.width as f32, size.height as f32)
@@ -249,8 +256,10 @@ impl Editor {
             0 => {
                 self.locked_angle = None;
                 if self.tool == ToolKind::Select {
-                    if self.selection.contains(pos) {
-                        // Drag inside the existing selection moves it.
+                    // A full-image selection counts as "no selection": dragging
+                    // anywhere starts a new one. Otherwise dragging inside the
+                    // existing selection moves it.
+                    if self.selection.contains(pos) && !self.selection_is_full() {
                         self.moving_selection = true;
                         self.move_anchor = pos;
                         self.move_origin = self.selection;
