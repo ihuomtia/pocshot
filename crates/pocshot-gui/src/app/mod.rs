@@ -18,7 +18,7 @@ use pocshot_snap::{detect_snap_lines, SnapConfig, SnapLines};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::annotation::{AnnotationState, AnnotationTool};
 use crate::canvas::{capture_size, clamp_image_rect, fit_rect, native_rect, screen_to_image};
@@ -27,11 +27,12 @@ use crate::selection::{handle_rects, HandleType, ImageSelection};
 use crate::snap::{snap_pos, SNAP_DISTANCE};
 use crate::toolbar::{show_settings_panel, show_toolbar, Action, ToolbarState};
 
-/// Repaint cap while a background worker runs. `request_repaint()` on a
-/// not-yet-ready channel spins full-speed frames; on a CPU renderer (WARP,
-/// llvmpipe) that pegs a core for the whole job. ~60fps keeps status text
-/// smooth while bounding the cost. Input-driven repaints are unaffected.
-pub(crate) const WORKER_REPAINT_INTERVAL: Duration = Duration::from_millis(16);
+/// Watchdog repaint while a background worker runs: workers call
+/// `ctx.request_repaint()` themselves when the result is sent, so no
+/// scheduled frames are needed while waiting. If a worker panicked
+/// without sending, this 1s tick keeps the poll (and the disconnect
+/// handling) alive instead of letting the UI sleep on a stale status.
+pub(crate) const WORKER_WATCHDOG_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Result of a background screen capture: the image plus its monitor geometry
 /// (needed to map global window coordinates into image coordinates).
@@ -254,6 +255,9 @@ struct PocshotApp {
     /// Active visual theme (colors, font sizes, geometry). Loaded from config
     /// at startup and swapped live on "Reload theme".
     theme: crate::theme::Theme,
+    /// Time of the previous frame, used to log frame timing for performance
+    /// measurement (especially on software renderers).
+    last_frame: Option<Instant>,
 }
 
 impl PocshotApp {
@@ -305,9 +309,10 @@ impl PocshotApp {
             capture_version: 0,
             clipboard_mode: matches!(source, AppSource::Clipboard(_)),
             theme: settings.theme,
+            last_frame: None,
         };
         match source {
-            AppSource::Screen => app.begin_capture(),
+            AppSource::Screen => app.begin_capture(&cc.egui_ctx),
             AppSource::Clipboard(image) => app.on_capture_ready(image, None, &cc.egui_ctx),
         }
         app
@@ -335,16 +340,18 @@ impl PocshotApp {
     /// picked up by [`Self::poll_capture`] on a later frame, so the window
     /// shows immediately instead of blocking the first frame on the (slow on
     /// Windows) backend initialization.
-    fn begin_capture(&mut self) {
+    fn begin_capture(&mut self, ctx: &egui::Context) {
         if self.capture_rx.is_some() {
             return;
         }
         self.status = "Capturing screen…".to_string();
         let (tx, rx) = mpsc::channel();
         self.capture_rx = Some(rx);
+        let ctx = ctx.clone();
         std::thread::spawn(move || {
             let result = pocshot_core::capture_screen_with_monitor().map_err(|e| e.to_string());
             let _ = tx.send(result);
+            ctx.request_repaint();
         });
     }
 
@@ -357,7 +364,7 @@ impl PocshotApp {
                 Err(error) => self.status = error.to_string(),
             }
         } else {
-            self.begin_capture();
+            self.begin_capture(ctx);
         }
     }
 
@@ -379,7 +386,7 @@ impl PocshotApp {
                 self.capture = None;
                 self.texture = None;
             }
-            Err(mpsc::TryRecvError::Empty) => ctx.request_repaint_after(WORKER_REPAINT_INTERVAL),
+            Err(mpsc::TryRecvError::Empty) => ctx.request_repaint_after(WORKER_WATCHDOG_INTERVAL),
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.capture_rx = None;
             }
@@ -423,6 +430,7 @@ impl PocshotApp {
 
         let img_for_thread = image.clone();
         let own_pid = std::process::id();
+        let ctx_for_thread = ctx.clone();
         std::thread::spawn(move || {
             let mut result = detect_snap_lines(&img_for_thread, &SnapConfig::default());
 
@@ -448,6 +456,7 @@ impl PocshotApp {
             result.horizontal.sort_by(|a, b| a.partial_cmp(b).unwrap());
             result.vertical.sort_by(|a, b| a.partial_cmp(b).unwrap());
             let _ = tx.send(result);
+            ctx_for_thread.request_repaint();
         });
 
         self.capture_version += 1;
@@ -463,7 +472,7 @@ impl PocshotApp {
         // Keep the last valid detection result visible while the new
         // capture's detection runs; poll_ocr swaps it when ready.
         if config::should_run_detection(self.ocr_enabled, true) {
-            if self.run_ocr_detection(image.clone()) {
+            if self.run_ocr_detection(ctx, image.clone()) {
                 log::info!(
                     "captured {}x{}, text detection running in background",
                     image.width(),
@@ -829,6 +838,16 @@ impl eframe::App for PocshotApp {
         self.normalize_dpi(ctx);
         self.shortcuts(ctx, frame);
 
+        if let Some(t) = self.last_frame {
+            let dt = t.elapsed();
+            if dt > Duration::from_millis(100) {
+                log::warn!("slow frame: {dt:?}");
+            } else {
+                log::debug!("frame: {dt:?}");
+            }
+        }
+        self.last_frame = Some(Instant::now());
+
         self.poll_capture(ctx);
         if let Some(rx) = &self.snap_lines_rx {
             if let Ok(sl) = rx.try_recv() {
@@ -840,13 +859,13 @@ impl eframe::App for PocshotApp {
                 self.snap_lines = Some(sl);
                 self.snap_lines_rx = None;
             } else {
-                ctx.request_repaint_after(WORKER_REPAINT_INTERVAL);
+                ctx.request_repaint_after(WORKER_WATCHDOG_INTERVAL);
             }
         }
 
         self.poll_ocr(ctx);
         self.poll_effect(ctx);
-        self.maybe_ocr_rerun();
+        self.maybe_ocr_rerun(ctx);
 
         let snap_ok = self.snap_enabled && !ctx.input(|i| i.modifiers.shift);
         let settings_before = self.to_settings();
@@ -1243,7 +1262,7 @@ impl eframe::App for PocshotApp {
                 self.ocr_raw_regions.clear();
                 self.ocr_ready_version = 0;
                 if self.capture.is_some() {
-                    let _ = self.run_ocr_detection(self.capture.clone().unwrap());
+                    let _ = self.run_ocr_detection(ctx, self.capture.clone().unwrap());
                 }
             }
         }

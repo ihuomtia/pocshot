@@ -93,7 +93,7 @@ impl PocshotApp {
             Action::ClearSelection => self.selection = None,
             Action::ToggleSettings => self.show_settings = !self.show_settings,
             Action::OcrRegion => {
-                self.run_ocr_on_selection();
+                self.run_ocr_on_selection(ctx);
             }
         }
     }

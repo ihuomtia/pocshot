@@ -17,7 +17,7 @@ impl PocshotApp {
     pub(crate) fn process_effect_drag(
         &mut self,
         response: &egui::Response,
-        _ctx: &egui::Context,
+        ctx: &egui::Context,
         snaps: (Vec<f32>, Vec<f32>),
         draw_rect: Rect,
         image_size: Vec2,
@@ -68,6 +68,7 @@ impl PocshotApp {
                 // the UI stays responsive even for a large region.
                 let (tx, rx) = mpsc::channel();
                 self.effect_rx = Some(rx);
+                let ctx = ctx.clone();
                 std::thread::spawn(move || {
                     let mut img = image;
                     match tool {
@@ -76,6 +77,7 @@ impl PocshotApp {
                         _ => {}
                     }
                     let _ = tx.send(img);
+                    ctx.request_repaint();
                 });
             }
             self.reset_effect();
@@ -102,7 +104,7 @@ impl PocshotApp {
                 self.status = "Effect applied".to_string();
             }
             Err(mpsc::TryRecvError::Empty) => {
-                ctx.request_repaint_after(super::WORKER_REPAINT_INTERVAL)
+                ctx.request_repaint_after(super::WORKER_WATCHDOG_INTERVAL)
             }
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.effect_rx = None;

@@ -71,7 +71,12 @@ impl PocshotApp {
     /// `region` (image coords); the crop origin is sent back so results can be
     /// re-anchored to full-capture coordinates. Returns false when there is
     /// nothing to run (disabled or model unavailable).
-    fn spawn_ocr_job(&mut self, image: image::RgbaImage, region: Option<Rect>) -> bool {
+    fn spawn_ocr_job(
+        &mut self,
+        ctx: &egui::Context,
+        image: image::RgbaImage,
+        region: Option<Rect>,
+    ) -> bool {
         if !config::should_run_detection(self.ocr_enabled, true) {
             return false;
         }
@@ -91,11 +96,13 @@ impl PocshotApp {
         let (tx, rx) = std::sync::mpsc::channel();
         self.ocr_rx = Some(rx);
         self.ocr_running = true;
+        let ctx = ctx.clone();
         std::thread::spawn(move || {
             let result = detector
                 .detect(&SourceImage::Owned(DynamicImage::ImageRgba8(detect_image)))
                 .map_err(|e| e.to_string());
             let _ = tx.send((version, result, region));
+            ctx.request_repaint();
         });
         true
     }
@@ -103,19 +110,23 @@ impl PocshotApp {
     /// Kick off an async detection for the given capture at the current
     /// version. When the "detect text only in selection" debug setting is on,
     /// detection runs on a crop of the selection.
-    pub(crate) fn run_ocr_detection(&mut self, image: image::RgbaImage) -> bool {
+    pub(crate) fn run_ocr_detection(
+        &mut self,
+        ctx: &egui::Context,
+        image: image::RgbaImage,
+    ) -> bool {
         let region = if self.ocr_region_only {
             self.ocr_target_region()
         } else {
             None
         };
-        self.spawn_ocr_job(image, region)
+        self.spawn_ocr_job(ctx, image, region)
     }
 
     /// Force an async detection on the currently-selected region, regardless
     /// of the "detect text only in selection" setting. This is the toolbar
     /// "OCR this region" button.
-    pub(crate) fn run_ocr_on_selection(&mut self) -> bool {
+    pub(crate) fn run_ocr_on_selection(&mut self, ctx: &egui::Context) -> bool {
         if !config::should_run_detection(self.ocr_enabled, true) {
             self.status = "OCR is disabled".to_string();
             return false;
@@ -127,7 +138,7 @@ impl PocshotApp {
         let Some(image) = self.capture.clone() else {
             return false;
         };
-        if self.spawn_ocr_job(image, Some(region)) {
+        if self.spawn_ocr_job(ctx, image, Some(region)) {
             // Copy the recognized text to the clipboard once it's detected.
             self.ocr_copy_on_done = true;
             // poll_ocr overwrites this with the real outcome once the worker
@@ -143,7 +154,7 @@ impl PocshotApp {
     /// Detect once per capture: run only when enabled, a capture exists, the
     /// newest version (or, in region-only mode, the selected region) has not
     /// been processed yet and no job is in flight.
-    pub(crate) fn maybe_ocr_rerun(&mut self) {
+    pub(crate) fn maybe_ocr_rerun(&mut self, ctx: &egui::Context) {
         let target_region = self.ocr_target_region();
         let region_changed = self.ocr_region_only && self.ocr_ready_region != target_region;
         if !self.ocr_running
@@ -151,7 +162,7 @@ impl PocshotApp {
             && (self.ocr_ready_version != self.capture_version || region_changed)
         {
             if let Some(img) = self.capture.clone() {
-                self.run_ocr_detection(img);
+                self.run_ocr_detection(ctx, img);
             }
         }
     }
@@ -233,7 +244,7 @@ impl PocshotApp {
                 }
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => {
-                ctx.request_repaint_after(super::WORKER_REPAINT_INTERVAL)
+                ctx.request_repaint_after(super::WORKER_WATCHDOG_INTERVAL)
             }
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 self.ocr_rx = None;
