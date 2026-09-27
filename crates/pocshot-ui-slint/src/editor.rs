@@ -83,9 +83,40 @@ pub struct Editor {
 }
 
 const TEXT_SIZE: f32 = 24.0;
+/// Padding around detected text regions for the highlight-text tool.
+const TEXT_BORDER_PADDING: f32 = 6.0;
+/// Redact boxes only pad vertically by one pixel.
+const REDACT_VERTICAL_PADDING: f32 = 1.0;
+
+/// Outer bounding box of a rectangle-like shape.
+fn shape_bounds(shape: &Shape) -> Option<Rect> {
+    match shape {
+        Shape::Rectangle { rect, .. } => Some(*rect),
+        Shape::Highlighter { rect } => Some(*rect),
+        _ => None,
+    }
+}
+
+/// Union of the text `regions` that intersect `drag`, padded for the tool.
+/// `None` when nothing intersects.
+fn text_region_border(regions: &[Rect], drag: Rect, kind: ToolKind) -> Option<Rect> {
+    let mut union: Option<Rect> = None;
+    for region in regions {
+        if region.intersects(drag) {
+            union = Some(match union {
+                Some(current) => current.union(*region),
+                None => *region,
+            });
+        }
+    }
+    union.map(|rect| match kind {
+        ToolKind::Redact => rect.expand2(Vec2::new(0.0, REDACT_VERTICAL_PADDING)),
+        _ => rect.expand(TEXT_BORDER_PADDING),
+    })
+}
 
 /// Toolbar order; index ↔ `ToolKind`.
-const TOOL_ORDER: [ToolKind; 15] = [
+const TOOL_ORDER: [ToolKind; 16] = [
     ToolKind::Select,
     ToolKind::Rectangle,
     ToolKind::FilledRectangle,
@@ -101,6 +132,7 @@ const TOOL_ORDER: [ToolKind; 15] = [
     ToolKind::Blur,
     ToolKind::Pixelate,
     ToolKind::Eraser,
+    ToolKind::HighlightText,
 ];
 
 impl Editor {
@@ -373,6 +405,17 @@ impl Editor {
                 } else if self.tool == ToolKind::Text {
                     // Text stays editable until Enter/Esc; mouse-up commits nothing.
                 } else if let Some(shape) = self.current.take() {
+                    let mut shape = shape;
+                    // Text tools snap their box to the detected text regions.
+                    if matches!(shape.kind(), ToolKind::Redact | ToolKind::HighlightText)
+                        && !self.ocr_regions.is_empty()
+                    {
+                        let drag = shape_bounds(&shape).unwrap_or(Rect::NOTHING);
+                        if let Some(border) = text_region_border(&self.text_regions(), drag, shape.kind())
+                        {
+                            shape.replace_rect(border);
+                        }
+                    }
                     if shape.kind() == ToolKind::Counter {
                         self.counter += 1;
                     }
@@ -476,6 +519,7 @@ impl Editor {
             "p" => self.set_tool(ToolKind::Pen),
             "h" => self.set_tool(ToolKind::Highlighter),
             "d" => self.set_tool(ToolKind::Redact),
+            "g" => self.set_tool(ToolKind::HighlightText),
             "n" => self.set_tool(ToolKind::Counter),
             "t" => self.set_tool(ToolKind::Text),
             "b" => self.set_tool(ToolKind::Blur),
@@ -643,6 +687,21 @@ impl Editor {
                 self.ocr_rx = None;
             }
         }
+    }
+
+    /// OCR regions in image space (already offset by the crop origin).
+    fn text_regions(&self) -> Vec<Rect> {
+        let origin = self.ocr_origin;
+        self.ocr_regions
+            .iter()
+            .map(|region| {
+                let r = region.rect;
+                Rect::from_min_max(
+                    Pos2::new(r.x0 + origin.x, r.y0 + origin.y),
+                    Pos2::new(r.x1 + origin.x, r.y1 + origin.y),
+                )
+            })
+            .collect()
     }
 
     /// Remove the topmost committed annotation under `pos` (eraser).
@@ -815,7 +874,7 @@ impl Editor {
         }
         self.ui.set_hint(
             format!(
-                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · N counter · T text · B blur · M pixelate · E eraser · V select · O OCR · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
+                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · G highlight-text · N counter · T text · B blur · M pixelate · E eraser · V select · O OCR · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
                 self.tool,
                 self.color_index(),
                 self.width
@@ -1013,6 +1072,36 @@ mod tests {
     fn crop_and_render_rejects_degenerate_selection() {
         let base = gradient(100, 50);
         assert!(crop_and_render(&base, &[], Rect::NOTHING).is_none());
+    }
+
+    #[test]
+    fn text_region_border_unions_intersecting_regions() {
+        let regions = [
+            Rect::from_min_max(pos2(10.0, 10.0), pos2(50.0, 20.0)),
+            Rect::from_min_max(pos2(10.0, 25.0), pos2(60.0, 35.0)),
+            Rect::from_min_max(pos2(200.0, 200.0), pos2(250.0, 210.0)),
+        ];
+        let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0));
+        let border = text_region_border(&regions, drag, ToolKind::HighlightText).unwrap();
+        // Only the two intersecting regions are unioned, padded by 6.
+        assert_eq!(border.min, pos2(4.0, 4.0));
+        assert_eq!(border.max, pos2(66.0, 41.0));
+    }
+
+    #[test]
+    fn text_region_border_redact_pads_vertically_only() {
+        let regions = [Rect::from_min_max(pos2(10.0, 10.0), pos2(50.0, 20.0))];
+        let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0));
+        let border = text_region_border(&regions, drag, ToolKind::Redact).unwrap();
+        assert_eq!(border.min, pos2(10.0, 9.0));
+        assert_eq!(border.max, pos2(50.0, 21.0));
+    }
+
+    #[test]
+    fn text_region_border_none_without_intersection() {
+        let regions = [Rect::from_min_max(pos2(10.0, 10.0), pos2(50.0, 20.0))];
+        let drag = Rect::from_min_max(pos2(200.0, 200.0), pos2(300.0, 300.0));
+        assert!(text_region_border(&regions, drag, ToolKind::HighlightText).is_none());
     }
 
     fn pos2(x: f32, y: f32) -> Pos2 {

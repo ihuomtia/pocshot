@@ -100,8 +100,16 @@ impl Shape {
                 points: vec![pos],
                 anchor: pos,
             },
-            ToolKind::Highlighter | ToolKind::HighlightText => Shape::Highlighter {
+            ToolKind::Highlighter => Shape::Highlighter {
                 rect: Rect::from_two_pos(pos, pos),
+            },
+            // Highlight-text draws an outline box around detected text regions
+            // (the box is replaced by the union of intersecting regions on
+            // release).
+            ToolKind::HighlightText => Shape::Rectangle {
+                start: pos,
+                rect: Rect::from_two_pos(pos, pos),
+                filled: false,
             },
             _ => return None,
         })
@@ -123,6 +131,23 @@ impl Shape {
             anchor,
             text: text.into(),
             size,
+        }
+    }
+
+    /// Replace the geometry of a rectangle-like shape (used to snap a drag to
+    /// detected text regions).
+    pub fn replace_rect(&mut self, rect: Rect) {
+        match self {
+            Shape::Rectangle {
+                start,
+                rect: current,
+                ..
+            } => {
+                *start = rect.min;
+                *current = rect;
+            }
+            Shape::Highlighter { rect: current } => *current = rect,
+            _ => {}
         }
     }
 
