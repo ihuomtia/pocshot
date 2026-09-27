@@ -78,6 +78,19 @@ impl PerfStats {
         self.avg_build().map(|d| d.as_secs_f32() * 1000.0)
     }
 
+    /// Mean time per frame that is NOT our own build work: raster, present and
+    /// any idle wait. With the forced-repaint probe on there is no idle wait,
+    /// so this is the raster+present cost. Saturates at zero so a stale pair
+    /// never reports a negative.
+    pub(crate) fn rest_ms(&self) -> Option<f32> {
+        match (self.avg_gap(), self.avg_build()) {
+            (Some(gap), Some(build)) => {
+                Some((gap.saturating_sub(build)).as_secs_f32() * 1000.0)
+            }
+            _ => None,
+        }
+    }
+
     pub(crate) fn worst_gap_ms(&self) -> f32 {
         self.worst_gap.as_secs_f32() * 1000.0
     }
@@ -117,6 +130,9 @@ pub(crate) fn hud_lines(
             lines.push(format!("fps       {fps:.1}"));
             lines.push(format!("gap       {gap:.1} ms"));
             lines.push(format!("build     {build:.1} ms"));
+            if let Some(rest) = stats.rest_ms() {
+                lines.push(format!("raster    {rest:.1} ms"));
+            }
         }
         _ => lines.push("fps       -".to_string()),
     }
@@ -265,6 +281,20 @@ mod tests {
         assert!(lines.iter().any(|l| l.contains("software")));
         assert!(lines.iter().any(|l| l.contains("1920x1080")));
         assert!(lines.iter().any(|l| l.starts_with("fps") && l.contains('-')));
+    }
+
+    /// The raster figure is the whole diagnostic: it must be gap minus build,
+    /// and must never go negative on a stale pairing.
+    #[test]
+    fn rest_time_is_gap_minus_build_and_never_negative() {
+        let s = stats_from(&[300, 300], &[20, 20]);
+        assert_eq!(s.rest_ms(), Some(280.0));
+
+        // Build longer than the gap cannot happen, but the figure must still
+        // saturate rather than report a negative.
+        let mut odd = PerfStats::default();
+        odd.record(Duration::from_millis(10), Duration::from_millis(10));
+        assert_eq!(odd.rest_ms(), Some(0.0));
     }
 
     #[test]

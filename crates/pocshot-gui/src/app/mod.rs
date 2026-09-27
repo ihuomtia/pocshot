@@ -891,6 +891,15 @@ impl PocshotApp {
             let _ = ht;
         }
     }
+
+    /// Diagnostic probe: with `POCSHOT_REPAINT_PROBE=1`, every frame requests
+    /// the next one immediately. That removes idle wait from the measured
+    /// `gap`, so `gap - build` becomes purely raster+present time. Off by
+    /// default: it deliberately renders as fast as the machine allows, the
+    /// opposite of the app's normal idle-sleep behaviour.
+    fn repaint_probe_enabled() -> bool {
+        std::env::var("POCSHOT_REPAINT_PROBE").is_ok_and(|v| v == "1")
+    }
 }
 
 impl eframe::App for PocshotApp {
@@ -927,6 +936,15 @@ impl eframe::App for PocshotApp {
             }
         }
         self.last_frame = Some(Instant::now());
+
+        // Diagnostic probe: with this on, every frame requests the next one
+        // immediately, so there is no idle wait in `gap` and `gap - build` is
+        // purely raster+present. Off unless POCSHOT_REPAINT_PROBE=1, because it
+        // deliberately renders as fast as the machine allows (it is the opposite
+        // of the idle-sleep behaviour the app normally has).
+        if Self::repaint_probe_enabled() {
+            ctx.request_repaint();
+        }
 
         self.poll_capture(ctx);
         if let Some(rx) = &self.snap_lines_rx {
@@ -1363,6 +1381,31 @@ mod tests {
         let bands = vignette_edge_bands(rect, 999.0);
         for band in bands {
             assert!(band.width() >= 0.0 && band.height() >= 0.0);
+        }
+    }
+
+    /// The probe is env-driven; pin the exact match so the documented value
+    /// cannot silently stop working.
+    #[test]
+    fn repaint_probe_requires_the_exact_value() {
+        let prev = std::env::var("POCSHOT_REPAINT_PROBE").ok();
+
+        unsafe { std::env::set_var("POCSHOT_REPAINT_PROBE", "1") };
+        assert!(PocshotApp::repaint_probe_enabled());
+
+        for value in ["0", "", "true", "yes", "2"] {
+            unsafe { std::env::set_var("POCSHOT_REPAINT_PROBE", value) };
+            assert!(
+                !PocshotApp::repaint_probe_enabled(),
+                "{value:?} must not enable the probe"
+            );
+        }
+
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("POCSHOT_REPAINT_PROBE", v),
+                None => std::env::remove_var("POCSHOT_REPAINT_PROBE"),
+            }
         }
     }
 }
