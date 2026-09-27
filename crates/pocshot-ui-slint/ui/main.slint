@@ -87,6 +87,10 @@ component SelHandle inherits Rectangle {
     in property <bool> show: false;
     in property <length> hx;
     in property <length> hy;
+    in property <length> win-w: 1px;
+    in property <length> win-h: 1px;
+    in property <MouseCursor> cursor: default;
+    callback pointer(float, float, int);
 
     visible: root.show;
     x: root.hx - 4px;
@@ -96,6 +100,21 @@ component SelHandle inherits Rectangle {
     background: #ffffff;
     border-color: #222222;
     border-width: 1px;
+
+    ta := TouchArea {
+        mouse-cursor: root.cursor;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.pointer(ta.mouse-x / root.win-w, ta.mouse-y / root.win-h, 0);
+            }
+            if (e.kind == PointerEventKind.move) {
+                root.pointer(ta.mouse-x / root.win-w, ta.mouse-y / root.win-h, 1);
+            }
+            if (e.kind == PointerEventKind.up) {
+                root.pointer(ta.mouse-x / root.win-w, ta.mouse-y / root.win-h, 2);
+            }
+        }
+    }
 }
 
 export component EditorWindow inherits Window {
@@ -231,14 +250,14 @@ export component EditorWindow inherits Window {
     }
 
     // Selection resize handles: 4 corners + 4 edge midpoints.
-    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: root.sel-ny * root.height; }
-    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw / 2) * root.width; hy: root.sel-ny * root.height; }
-    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: root.sel-ny * root.height; }
-    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: (root.sel-ny + root.sel-nh / 2) * root.height; }
-    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; }
-    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw / 2) * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; }
-    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; }
-    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh / 2) * root.height; }
+    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: root.sel-ny * root.height; win-w: root.width; win-h: root.height; cursor: nwse-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw / 2) * root.width; hy: root.sel-ny * root.height; win-w: root.width; win-h: root.height; cursor: ns-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: root.sel-ny * root.height; win-w: root.width; win-h: root.height; cursor: nesw-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: (root.sel-ny + root.sel-nh / 2) * root.height; win-w: root.width; win-h: root.height; cursor: ew-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; win-w: root.width; win-h: root.height; cursor: nwse-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw / 2) * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; win-w: root.width; win-h: root.height; cursor: ns-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; win-w: root.width; win-h: root.height; cursor: nesw-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh / 2) * root.height; win-w: root.width; win-h: root.height; cursor: ew-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
 
     // Toolbar, row 1: actions.
     Rectangle {

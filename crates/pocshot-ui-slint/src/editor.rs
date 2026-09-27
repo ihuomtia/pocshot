@@ -63,6 +63,9 @@ pub struct Editor {
     move_origin: Rect,
     /// Resizing the selection via one of its handles.
     resizing: Option<HandleType>,
+    /// True while a drag is building `current` (so hover previews are not
+    /// committed on the next mouse-up).
+    dragging_shape: bool,
     counter: u32,
     /// True while a text annotation is being typed (key events go to the buffer).
     typing_text: bool,
@@ -173,6 +176,7 @@ impl Editor {
             move_anchor: Pos2::ZERO,
             move_origin: Rect::NOTHING,
             resizing: None,
+            dragging_shape: false,
             counter: 1,
             typing_text: false,
             history: Vec::new(),
@@ -408,6 +412,7 @@ impl Editor {
                     self.erase_at(pos);
                 } else if self.tool == ToolKind::Counter {
                     self.current = Some(Shape::begin_counter(pos, self.counter));
+                    self.dragging_shape = true;
                 } else if self.tool == ToolKind::Text {
                     self.current = Some(Shape::text(pos, "", self.text_size));
                     self.typing_text = true;
@@ -416,6 +421,7 @@ impl Editor {
                     self.effect_rect = Some(Rect::from_two_pos(pos, pos));
                 } else if let Some(shape) = Shape::begin(self.tool, pos) {
                     self.current = Some(shape);
+                    self.dragging_shape = true;
                 }
             }
             1 => {
@@ -433,8 +439,13 @@ impl Editor {
                     self.selection = Rect::from_two_pos(self.select_anchor, pos);
                 } else if self.effect_rect.is_some() {
                     self.effect_rect = Some(Rect::from_two_pos(self.effect_anchor, pos));
-                } else if let Some(shape) = self.current.as_mut() {
-                    self.locked_angle = shape.update(pos, ctrl, self.locked_angle);
+                } else if self.dragging_shape {
+                    if let Some(shape) = self.current.as_mut() {
+                        self.locked_angle = shape.update(pos, ctrl, self.locked_angle);
+                    }
+                } else if self.tool == ToolKind::Counter {
+                    // Hover preview: the bubble follows the cursor.
+                    self.current = Some(Shape::begin_counter(pos, self.counter));
                 }
             }
             2 => {
@@ -449,28 +460,32 @@ impl Editor {
                     self.apply_effect(rect);
                 } else if self.tool == ToolKind::Text {
                     // Text stays editable until Enter/Esc; mouse-up commits nothing.
-                } else if let Some(shape) = self.current.take() {
-                    let mut shape = shape;
-                    // Text tools snap their box to the detected text regions.
-                    if matches!(shape.kind(), ToolKind::Redact | ToolKind::HighlightText)
-                        && !self.ocr_regions.is_empty()
-                    {
-                        let drag = shape_bounds(&shape).unwrap_or(Rect::NOTHING);
-                        if let Some(border) = text_region_border(&self.text_regions(), drag, shape.kind())
+                } else if self.dragging_shape {
+                    self.dragging_shape = false;
+                    if let Some(shape) = self.current.take() {
+                        let mut shape = shape;
+                        // Text tools snap their box to the detected text regions.
+                        if matches!(shape.kind(), ToolKind::Redact | ToolKind::HighlightText)
+                            && !self.ocr_regions.is_empty()
                         {
-                            shape.replace_rect(border);
+                            let drag = shape_bounds(&shape).unwrap_or(Rect::NOTHING);
+                            if let Some(border) =
+                                text_region_border(&self.text_regions(), drag, shape.kind())
+                            {
+                                shape.replace_rect(border);
+                            }
                         }
+                        if shape.kind() == ToolKind::Counter {
+                            self.counter += 1;
+                        }
+                        self.checkpoint();
+                        self.annotations.push(Annotation {
+                            shape,
+                            color: self.color,
+                            width: self.width,
+                        });
+                        self.rebuild_composited();
                     }
-                    if shape.kind() == ToolKind::Counter {
-                        self.counter += 1;
-                    }
-                    self.checkpoint();
-                    self.annotations.push(Annotation {
-                        shape,
-                        color: self.color,
-                        width: self.width,
-                    });
-                    self.rebuild_composited();
                 }
             }
             _ => {}
@@ -702,6 +717,11 @@ impl Editor {
     }
 
     fn set_tool(&mut self, tool: ToolKind) {
+        // Drop a counter hover preview when switching to another tool.
+        if tool != ToolKind::Counter && !self.dragging_shape && self.current.is_some() {
+            self.current = None;
+            self.refresh_preview();
+        }
         self.tool = tool;
         self.refresh_hint();
     }
