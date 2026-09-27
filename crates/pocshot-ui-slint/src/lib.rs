@@ -50,6 +50,7 @@ pub fn run() -> Result<()> {
         image,
         lines,
         Some((monitor.x, monitor.y, monitor.width, monitor.height)),
+        false,
     )
 }
 
@@ -68,7 +69,7 @@ pub fn run_edit(image: RgbaImage) -> Result<()> {
         let y = monitor.y + ((monitor.height - height) / 2) as i32;
         Some((x, y, width, height))
     });
-    show_editor(image, lines, placement)
+    show_editor(image, lines, placement, true)
 }
 
 /// Force the software renderer for this process (`--software`).
@@ -145,6 +146,7 @@ fn show_editor(
     image: RgbaImage,
     snap_lines: pocshot_snap::SnapLines,
     placement: Option<(i32, i32, u32, u32)>,
+    from_clipboard: bool,
 ) -> Result<()> {
     let ui = EditorWindow::new().context("failed to create the Slint window")?;
     ui.set_shot(editor::to_slint_image(&image));
@@ -161,7 +163,7 @@ fn show_editor(
 
     // Keep the editor alive for as long as the event loop runs: the Slint
     // callbacks only hold a weak reference to it.
-    let editor = editor::Editor::new(ui, image, snap_lines);
+    let editor = editor::Editor::new(ui, image, snap_lines, from_clipboard);
     editor.borrow().show().context("failed to show the window")?;
     // The window size is only known once shown, so publish the image placement
     // after that.

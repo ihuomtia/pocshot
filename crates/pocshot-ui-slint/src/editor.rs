@@ -85,13 +85,20 @@ pub struct Editor {
     show_ocr: bool,
     /// Keeps the OCR poll timer alive.
     _timer: slint::Timer,
+    // Settings.
+    copy_on_save: bool,
+    settings_visible: bool,
+    text_size: f32,
+    /// True when the image came from the clipboard (affects Refresh).
+    source_is_clipboard: bool,
 }
 
-const TEXT_SIZE: f32 = 24.0;
 /// Padding around detected text regions for the highlight-text tool.
 const TEXT_BORDER_PADDING: f32 = 6.0;
 /// Redact boxes only pad vertically by one pixel.
 const REDACT_VERTICAL_PADDING: f32 = 1.0;
+/// Default/new text annotation size; adjustable in settings.
+const DEFAULT_TEXT_SIZE: f32 = 24.0;
 
 /// Outer bounding box of a rectangle-like shape.
 fn shape_bounds(shape: &Shape) -> Option<Rect> {
@@ -141,7 +148,12 @@ const TOOL_ORDER: [ToolKind; 16] = [
 ];
 
 impl Editor {
-    pub fn new(ui: EditorWindow, base: RgbaImage, snap_lines: SnapLines) -> Rc<RefCell<Self>> {
+    pub fn new(
+        ui: EditorWindow,
+        base: RgbaImage,
+        snap_lines: SnapLines,
+        source_is_clipboard: bool,
+    ) -> Rc<RefCell<Self>> {
         let size = Vec2::new(base.width() as f32, base.height() as f32);
         let composited = base.clone();
         let editor = Rc::new(RefCell::new(Self {
@@ -176,6 +188,10 @@ impl Editor {
             ocr_origin: Pos2::ZERO,
             show_ocr: false,
             _timer: slint::Timer::default(),
+            copy_on_save: false,
+            settings_visible: false,
+            text_size: DEFAULT_TEXT_SIZE,
+            source_is_clipboard,
         }));
 
         {
@@ -393,7 +409,7 @@ impl Editor {
                 } else if self.tool == ToolKind::Counter {
                     self.current = Some(Shape::begin_counter(pos, self.counter));
                 } else if self.tool == ToolKind::Text {
-                    self.current = Some(Shape::text(pos, "", TEXT_SIZE));
+                    self.current = Some(Shape::text(pos, "", self.text_size));
                     self.typing_text = true;
                 } else if self.tool == ToolKind::Blur || self.tool == ToolKind::Pixelate {
                     self.effect_anchor = pos;
@@ -475,12 +491,44 @@ impl Editor {
                 self.width = (self.width + 1.0).min(24.0);
                 self.refresh_hint();
             }
+            "text-size-" => {
+                self.text_size = (self.text_size - 2.0).max(8.0);
+                self.refresh_hint();
+            }
+            "text-size+" => {
+                self.text_size = (self.text_size + 2.0).min(72.0);
+                self.refresh_hint();
+            }
             "undo" => self.undo(),
             "redo" => self.redo(),
             "ocr" => self.toggle_ocr(),
             "copy" => self.copy_and_quit(),
             "save" => self.save_and_quit(),
             "pin" => self.pin_and_quit(),
+            "refresh" => self.refresh_and_quit(),
+            "clear-annotations" => {
+                if !self.annotations.is_empty() {
+                    self.checkpoint();
+                    self.annotations.clear();
+                    self.rebuild_composited();
+                }
+            }
+            "clear-selection" => {
+                self.selection = self.image_rect();
+                self.refresh_selection();
+            }
+            "settings" => {
+                self.settings_visible = !self.settings_visible;
+                self.ui.set_settings_visible(self.settings_visible);
+            }
+            "copy-save" => {
+                self.copy_on_save = !self.copy_on_save;
+                self.refresh_hint();
+            }
+            "snap" => {
+                self.snap_enabled = !self.snap_enabled;
+                self.refresh_hint();
+            }
             "quit" => crate::quit_event_loop(),
             _ => {}
         }
@@ -490,7 +538,35 @@ impl Editor {
     /// pointer events belong to buttons rather than the canvas.
     fn pointer_in_toolbar(&self, ny: f32) -> bool {
         let win = self.window_size();
-        win.y > 0.0 && ny * win.y > win.y - 76.0
+        win.y > 0.0 && ny * win.y > win.y - 116.0
+    }
+
+    /// Re-capture (or re-read the clipboard) from scratch: hide, respawn a
+    /// fresh editor process, quit.
+    fn refresh_and_quit(&mut self) {
+        let args: Vec<String> = if self.source_is_clipboard {
+            vec!["--ui".into(), "slint".into(), "edit".into()]
+        } else {
+            vec!["--ui".into(), "slint".into()]
+        };
+        // The window is opaque and would land in the new capture: hide first,
+        // then give the new process a moment before it captures.
+        let _ = self.ui.window().hide();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if let Ok(exe) = std::env::current_exe() {
+                let mut cmd = std::process::Command::new(exe);
+                cmd.args(&args);
+                pocshot_core::quiet_io(&mut cmd);
+                pocshot_core::detach(&mut cmd);
+                if let Err(error) = cmd.spawn() {
+                    log::error!("failed to respawn: {error}");
+                }
+            }
+            let _ = slint::invoke_from_event_loop(|| {
+                let _ = slint::quit_event_loop();
+            });
+        });
     }
 
     fn on_key(&mut self, text: &str) {
@@ -896,6 +972,12 @@ impl Editor {
             .set_active_tool(self.tool_index());
         self.ui
             .set_active_color(PALETTE.iter().position(|c| *c == self.color).unwrap_or(0) as i32);
+        self.ui.set_stroke_width(self.width as i32);
+        self.ui.set_text_size(self.text_size as i32);
+        self.ui
+            .set_copy_save_value(if self.copy_on_save { "on" } else { "off" }.into());
+        self.ui
+            .set_snap_value(if self.snap_enabled { "on" } else { "off" }.into());
         if self.typing_text {
             self.ui.set_hint(
                 "Type text · Enter commit · Esc cancel · Backspace delete".into(),
@@ -1000,7 +1082,16 @@ impl Editor {
             Ok(()) => log::info!("saved {} ({}x{})", path.display(), image.width(), image.height()),
             Err(error) => log::error!("failed to save {}: {error}", path.display()),
         }
-        crate::quit_event_loop();
+        if self.copy_on_save {
+            match pocshot_core::copy_rgba_to_clipboard(&image) {
+                Ok(true) => log::info!("also copied to clipboard"),
+                Ok(false) => log::warn!("clipboard reported no image copied"),
+                Err(error) => log::error!("failed to copy: {error}"),
+            }
+            crate::quit_after_grace();
+        } else {
+            crate::quit_event_loop();
+        }
     }
 }
 

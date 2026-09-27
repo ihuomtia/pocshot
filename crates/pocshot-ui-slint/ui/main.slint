@@ -1,21 +1,28 @@
 //! Pocshot editor window (Slint). The view is deliberately dumb: it shows the
 //! captured image, a committed-annotations overlay, a live preview image, the
-//! selection rectangle and a toolbar, and forwards events to Rust. All editing
-//! logic lives in `lib.rs`/`editor.rs`.
+//! selection rectangle and the toolbar, and forwards events to Rust. All
+//! editing logic lives in `lib.rs`/`editor.rs`.
+
+component Sep inherits Rectangle {
+    width: 1px;
+    height: 26px;
+    background: #3d3d3d;
+}
 
 component Chip inherits Rectangle {
     in property <string> label;
-    in property <color> fill: #2a2a2a;
+    in property <color> fill: #262626;
     in property <bool> active: false;
-    in property <length> chip-width: 34px;
+    in property <length> chip-width: 38px;
+    in property <string> tooltip: "";
     callback clicked;
 
     width: root.chip-width;
-    height: 30px;
-    border-radius: 4px;
-    background: root.active ? #3a7bd5 : root.fill;
-    border-color: #555555;
+    height: 32px;
+    border-radius: 6px;
+    border-color: #3d3d3d;
     border-width: 1px;
+    background: root.active ? #3a7bd5 : (ta.has-hover ? #3a3a3a : root.fill);
 
     Text {
         text: root.label;
@@ -25,10 +32,54 @@ component Chip inherits Rectangle {
         vertical-alignment: center;
     }
 
-    TouchArea {
+    if (ta.has-hover && root.tooltip != "") : Rectangle {
+        y: -30px;
+        x: root.width / 2 - 90px;
+        width: 180px;
+        height: 22px;
+        background: #111111e6;
+        border-radius: 4px;
+        Text {
+            x: 8px;
+            width: parent.width - 16px;
+            text: root.tooltip;
+            color: #ffffff;
+            font-size: 12px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    ta := TouchArea {
         clicked => {
             root.clicked();
         }
+    }
+}
+
+/// A labelled settings row with a toggle chip.
+component SettingsRow inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> value: "off";
+    callback toggled;
+
+    height: 34px;
+    alignment: start;
+    spacing: 8px;
+
+    Text {
+        text: root.title;
+        color: #ffffffdd;
+        font-size: 13px;
+        vertical-alignment: center;
+        width: 130px;
+    }
+    Chip {
+        label: root.value == "on" ? "On" : "Off";
+        active: root.value == "on";
+        chip-width: 48px;
+        tooltip: "Toggle";
+        clicked => { root.toggled(); }
     }
 }
 
@@ -72,8 +123,14 @@ export component EditorWindow inherits Window {
     in property <string> hint;
     in property <int> active-tool: 0;
     in property <int> active-color: 0;
-    /// Fall back to fullscreen when no explicit placement is known.
+    // Fall back to fullscreen when no explicit placement is known.
     in property <bool> fullscreen: false;
+    // Settings panel.
+    in property <bool> settings-visible: false;
+    in property <string> copy-save-value: "off";
+    in property <string> snap-value: "on";
+    in property <int> text-size: 24;
+    in property <int> stroke-width: 3;
 
     // phase: 0 = down, 1 = move, 2 = up. Coordinates are normalised 0..1.
     callback pointer(float, float, int);
@@ -117,6 +174,20 @@ export component EditorWindow inherits Window {
         height: root.preview-nh * root.height;
     }
 
+    ta := TouchArea {
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 0);
+            }
+            if (e.kind == PointerEventKind.move) {
+                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 1);
+            }
+            if (e.kind == PointerEventKind.up) {
+                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 2);
+            }
+        }
+    }
+
     Rectangle {
         visible: root.sel-visible;
         x: root.sel-nx * root.width;
@@ -138,85 +209,164 @@ export component EditorWindow inherits Window {
     SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; }
     SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh / 2) * root.height; }
 
-    ta := TouchArea {
-        pointer-event(e) => {
-            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
-                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 0);
-            }
-            if (e.kind == PointerEventKind.move) {
-                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 1);
-            }
-            if (e.kind == PointerEventKind.up) {
-                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 2);
-            }
-        }
-    }
-
-    // Toolbar.
+    // Toolbar, row 1: actions.
     Rectangle {
         x: 0;
-        y: root.height - 76px;
+        y: root.height - 116px;
         width: 100%;
-        height: 46px;
+        height: 40px;
         background: #000000c8;
     }
 
     HorizontalLayout {
-        x: 6px;
-        y: root.height - 76px;
-        height: 46px;
-        spacing: 3px;
+        x: 8px;
+        y: root.height - 116px;
+        height: 40px;
+        spacing: 4px;
         alignment: start;
 
-        Chip { label: "V"; active: root.active-tool == 0; clicked => { root.tool(0); } }
-        Chip { label: "R"; active: root.active-tool == 1; clicked => { root.tool(1); } }
-        Chip { label: "▣"; active: root.active-tool == 2; clicked => { root.tool(2); } }
-        Chip { label: "L"; active: root.active-tool == 3; clicked => { root.tool(3); } }
-        Chip { label: "A"; active: root.active-tool == 4; clicked => { root.tool(4); } }
-        Chip { label: "C"; active: root.active-tool == 5; clicked => { root.tool(5); } }
-        Chip { label: "●"; active: root.active-tool == 6; clicked => { root.tool(6); } }
-        Chip { label: "P"; active: root.active-tool == 7; clicked => { root.tool(7); } }
-        Chip { label: "H"; active: root.active-tool == 8; clicked => { root.tool(8); } }
-        Chip { label: "D"; active: root.active-tool == 9; clicked => { root.tool(9); } }
-        Chip { label: "G"; active: root.active-tool == 15; clicked => { root.tool(15); } }
-        Chip { label: "N"; active: root.active-tool == 10; clicked => { root.tool(10); } }
-        Chip { label: "T"; active: root.active-tool == 11; clicked => { root.tool(11); } }
-        Chip { label: "B"; active: root.active-tool == 12; clicked => { root.tool(12); } }
-        Chip { label: "M"; active: root.active-tool == 13; clicked => { root.tool(13); } }
-        Chip { label: "E"; active: root.active-tool == 14; clicked => { root.tool(14); } }
+        Chip { label: "↻"; tooltip: "Refresh capture (re-capture and reset)"; clicked => { root.action("refresh"); } }
+        Chip { label: "↶"; tooltip: "Undo (Ctrl+Z)"; clicked => { root.action("undo"); } }
+        Chip { label: "↷"; tooltip: "Redo (Ctrl+Shift+Z)"; clicked => { root.action("redo"); } }
+        Sep { }
+        Chip { label: "Copy"; chip-width: 54px; tooltip: "Copy selection (Enter / Ctrl+C)"; clicked => { root.action("copy"); } }
+        Chip { label: "Save"; chip-width: 54px; tooltip: "Save selection as PNG (Ctrl+S)"; clicked => { root.action("save"); } }
+        Chip { label: "Pin"; chip-width: 46px; tooltip: "Pin selection to the screen"; clicked => { root.action("pin"); } }
+        Sep { }
+        Chip { label: "OCR"; chip-width: 46px; tooltip: "Detect text in selection (O)"; clicked => { root.action("ocr"); } }
+        Chip { label: "✕ ann"; chip-width: 62px; tooltip: "Clear all annotations"; clicked => { root.action("clear-annotations"); } }
+        Chip { label: "✕ sel"; chip-width: 62px; tooltip: "Reset the selection to the whole image"; clicked => { root.action("clear-selection"); } }
+        Sep { }
+        Chip { label: "⚙"; tooltip: "Settings"; active: root.settings-visible; clicked => { root.action("settings"); } }
+        Chip { label: "Quit"; chip-width: 54px; tooltip: "Close (Esc)"; clicked => { root.action("quit"); } }
+    }
 
-        Chip { label: "1"; chip-width: 24px; fill: #ff3b30; active: root.active-color == 0; clicked => { root.pick-color(0); } }
-        Chip { label: ""; chip-width: 24px; fill: #ff9500; active: root.active-color == 1; clicked => { root.pick-color(1); } }
-        Chip { label: ""; chip-width: 24px; fill: #ffd60a; active: root.active-color == 2; clicked => { root.pick-color(2); } }
-        Chip { label: ""; chip-width: 24px; fill: #34c759; active: root.active-color == 3; clicked => { root.pick-color(3); } }
-        Chip { label: ""; chip-width: 24px; fill: #0a84ff; active: root.active-color == 4; clicked => { root.pick-color(4); } }
-        Chip { label: ""; chip-width: 24px; fill: #ff2d95; active: root.active-color == 5; clicked => { root.pick-color(5); } }
+    // Toolbar, row 2: tools + colours + width.
+    Rectangle {
+        x: 0;
+        y: root.height - 72px;
+        width: 100%;
+        height: 44px;
+        background: #000000d8;
+    }
 
-        Chip { label: "‑"; clicked => { root.action("width-"); } }
-        Chip { label: "+"; clicked => { root.action("width+"); } }
-        Chip { label: "↶"; clicked => { root.action("undo"); } }
-        Chip { label: "↷"; clicked => { root.action("redo"); } }
-        Chip { label: "OCR"; chip-width: 44px; clicked => { root.action("ocr"); } }
-        Chip { label: "Pin"; chip-width: 44px; clicked => { root.action("pin"); } }
-        Chip { label: "Copy"; chip-width: 52px; clicked => { root.action("copy"); } }
-        Chip { label: "Save"; chip-width: 52px; clicked => { root.action("save"); } }
-        Chip { label: "Quit"; chip-width: 52px; clicked => { root.action("quit"); } }
+    HorizontalLayout {
+        x: 8px;
+        y: root.height - 72px;
+        height: 44px;
+        spacing: 4px;
+        alignment: start;
+
+        Chip { label: "V"; tooltip: "Select (V) - drag to select, drag inside to move"; active: root.active-tool == 0; clicked => { root.tool(0); } }
+        Chip { label: "▭"; tooltip: "Rectangle (R)"; active: root.active-tool == 1; clicked => { root.tool(1); } }
+        Chip { label: "▣"; tooltip: "Filled rectangle (Shift+R)"; active: root.active-tool == 2; clicked => { root.tool(2); } }
+        Chip { label: "─"; tooltip: "Line (L)"; active: root.active-tool == 3; clicked => { root.tool(3); } }
+        Chip { label: "→"; tooltip: "Arrow (A)"; active: root.active-tool == 4; clicked => { root.tool(4); } }
+        Chip { label: "○"; tooltip: "Circle (C)"; active: root.active-tool == 5; clicked => { root.tool(5); } }
+        Chip { label: "●"; tooltip: "Filled circle (Shift+C)"; active: root.active-tool == 6; clicked => { root.tool(6); } }
+        Chip { label: "✎"; tooltip: "Pen (P)"; active: root.active-tool == 7; clicked => { root.tool(7); } }
+        Chip { label: "▬"; tooltip: "Highlighter (H)"; active: root.active-tool == 8; clicked => { root.tool(8); } }
+        Chip { label: "▨"; tooltip: "Redact (D) - fills text regions when OCR ran"; active: root.active-tool == 9; clicked => { root.tool(9); } }
+        Chip { label: "①"; tooltip: "Counter (N) - click or drag a callout"; active: root.active-tool == 10; clicked => { root.tool(10); } }
+        Chip { label: "T"; tooltip: "Text (T) - click, type, Enter"; active: root.active-tool == 11; clicked => { root.tool(11); } }
+        Chip { label: "◍"; tooltip: "Blur region (B)"; active: root.active-tool == 12; clicked => { root.tool(12); } }
+        Chip { label: "▦"; tooltip: "Pixelate region (M)"; active: root.active-tool == 13; clicked => { root.tool(13); } }
+        Chip { label: "⌫"; tooltip: "Eraser (E) - click an annotation"; active: root.active-tool == 14; clicked => { root.tool(14); } }
+        Chip { label: "G"; tooltip: "Text border (G) - boxes text regions when OCR ran"; active: root.active-tool == 15; clicked => { root.tool(15); } }
+        Sep { }
+        Chip { label: ""; chip-width: 26px; fill: #ff3b30; active: root.active-color == 0; tooltip: "Colour 1"; clicked => { root.pick-color(0); } }
+        Chip { label: ""; chip-width: 26px; fill: #ff9500; active: root.active-color == 1; tooltip: "Colour 2"; clicked => { root.pick-color(1); } }
+        Chip { label: ""; chip-width: 26px; fill: #ffd60a; active: root.active-color == 2; tooltip: "Colour 3"; clicked => { root.pick-color(2); } }
+        Chip { label: ""; chip-width: 26px; fill: #34c759; active: root.active-color == 3; tooltip: "Colour 4"; clicked => { root.pick-color(3); } }
+        Chip { label: ""; chip-width: 26px; fill: #0a84ff; active: root.active-color == 4; tooltip: "Colour 5"; clicked => { root.pick-color(4); } }
+        Chip { label: ""; chip-width: 26px; fill: #ff2d95; active: root.active-color == 5; tooltip: "Colour 6"; clicked => { root.pick-color(5); } }
+        Sep { }
+        Chip { label: "−"; chip-width: 30px; tooltip: "Thinner stroke ( [ )"; clicked => { root.action("width-"); } }
+        Text {
+            width: 34px;
+            text: root.stroke-width;
+            color: #ffffffdd;
+            font-size: 13px;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+        Chip { label: "+"; chip-width: 30px; tooltip: "Thicker stroke ( ] )"; clicked => { root.action("width+"); } }
+    }
+
+    // Settings panel.
+    if (root.settings-visible) : Rectangle {
+        x: root.width - 268px;
+        y: root.height - 316px;
+        width: 256px;
+        height: 236px;
+        background: #161616f2;
+        border-radius: 8px;
+        border-color: #3d3d3d;
+        border-width: 1px;
+
+        Text {
+            x: 12px;
+            y: 8px;
+            text: "Settings";
+            color: #ffffff;
+            font-size: 15px;
+        }
+
+        VerticalLayout {
+            x: 12px;
+            y: 40px;
+            width: 232px;
+            spacing: 4px;
+
+            SettingsRow {
+                title: "Copy on save";
+                value: root.copy-save-value;
+                toggled => { root.action("copy-save"); }
+            }
+            SettingsRow {
+                title: "Snapping";
+                value: root.snap-value;
+                toggled => { root.action("snap"); }
+            }
+            HorizontalLayout {
+                height: 34px;
+                spacing: 8px;
+                alignment: start;
+                Text {
+                    text: "Text size";
+                    color: #ffffffdd;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    width: 130px;
+                }
+                Chip { label: "−"; chip-width: 30px; clicked => { root.action("text-size-"); } }
+                Text {
+                    text: root.text-size;
+                    color: #ffffff;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    width: 34px;
+                    horizontal-alignment: center;
+                }
+                Chip { label: "+"; chip-width: 30px; clicked => { root.action("text-size+"); } }
+            }
+        }
     }
 
     // Hint line.
     Rectangle {
         x: 0;
-        y: root.height - 30px;
+        y: root.height - 28px;
         width: 100%;
-        height: 30px;
+        height: 28px;
         background: #000000a0;
     }
 
     Text {
         x: 12px;
-        y: root.height - 30px;
+        y: root.height - 28px;
         width: root.width - 24px;
-        height: 30px;
+        height: 28px;
         vertical-alignment: center;
         color: #ffffffdd;
         font-size: 13px;
