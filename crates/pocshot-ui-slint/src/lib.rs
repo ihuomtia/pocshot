@@ -62,6 +62,9 @@ fn show_editor(image: RgbaImage, snap_lines: pocshot_snap::SnapLines) -> Result<
     // callbacks only hold a weak reference to it.
     let editor = editor::Editor::new(ui, image, snap_lines);
     editor.borrow().show().context("failed to show the window")?;
+    // The window size is only known once shown, so publish the image placement
+    // after that.
+    editor.borrow().refresh_layout();
     slint::run_event_loop().context("Slint event loop failed")
 }
 

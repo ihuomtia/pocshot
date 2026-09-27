@@ -136,10 +136,72 @@ impl Editor {
         Rect::from_min_size(Pos2::ZERO, self.size())
     }
 
+    fn window_size(&self) -> Vec2 {
+        let size = self.ui.window().size();
+        Vec2::new(size.width as f32, size.height as f32)
+    }
+
+    /// Normalised (0..1) rect the image occupies in the window: native 1:1 when
+    /// it fits, otherwise aspect-fit (centred). Screen captures match their
+    /// monitor, so they land full-window.
+    fn display_rect(&self) -> Rect {
+        let win = self.window_size();
+        let img = self.size();
+        if win.x <= 0.0 || win.y <= 0.0 {
+            return Rect::from_min_size(Pos2::ZERO, Vec2::new(1.0, 1.0));
+        }
+        let scale = if img.x <= win.x && img.y <= win.y {
+            1.0
+        } else {
+            (win.x / img.x).min(win.y / img.y)
+        };
+        let size = img * scale;
+        let min = Pos2::new((win.x - size.x) * 0.5, (win.y - size.y) * 0.5);
+        Rect::from_min_size(
+            Pos2::new(min.x / win.x, min.y / win.y),
+            Vec2::new(size.x / win.x, size.y / win.y),
+        )
+    }
+
+    /// Image-space rect → normalised window rect.
+    fn image_to_norm(&self, rect: Rect) -> (f32, f32, f32, f32) {
+        let display = self.display_rect();
+        let img = self.size();
+        (
+            display.min.x + rect.min.x / img.x * display.width(),
+            display.min.y + rect.min.y / img.y * display.height(),
+            rect.width() / img.x * display.width(),
+            rect.height() / img.y * display.height(),
+        )
+    }
+
+    /// Normalised window coords → image-space point.
+    fn norm_to_image(&self, nx: f32, ny: f32) -> Pos2 {
+        let display = self.display_rect();
+        if display.width() <= 0.0 || display.height() <= 0.0 {
+            return Pos2::ZERO;
+        }
+        let img = self.size();
+        Pos2::new(
+            (nx - display.min.x) / display.width() * img.x,
+            (ny - display.min.y) / display.height() * img.y,
+        )
+    }
+
+    /// Publish the image placement (called after show and on every pointer
+    /// event, so resizes are picked up).
+    pub(crate) fn refresh_layout(&self) {
+        let display = self.display_rect();
+        self.ui.set_shot_nx(display.min.x);
+        self.ui.set_shot_ny(display.min.y);
+        self.ui.set_shot_nw(display.width());
+        self.ui.set_shot_nh(display.height());
+    }
+
     fn on_pointer(&mut self, nx: f32, ny: f32, phase: i32) {
-        let size = self.size();
         let (ctrl, shift) = platform::query_modifiers();
-        let raw = Pos2::new(nx.clamp(0.0, 1.0) * size.x, ny.clamp(0.0, 1.0) * size.y);
+        let raw = self.norm_to_image(nx, ny);
+        self.refresh_layout();
         // Snap to image/window edges unless Shift is held.
         let pos = if self.snap_enabled && !shift {
             Pos2::new(
@@ -448,22 +510,24 @@ impl Editor {
     }
 
     fn publish_preview(&self, image: RgbaImage, x0: u32, y0: u32, x1: u32, y1: u32) {
-        let size = self.size();
+        let (nx, ny, nw, nh) = self.image_to_norm(Rect::from_min_max(
+            Pos2::new(x0 as f32, y0 as f32),
+            Pos2::new(x1 as f32, y1 as f32),
+        ));
         self.ui.set_preview(to_slint_image(&image));
-        self.ui.set_preview_nx(x0 as f32 / size.x);
-        self.ui.set_preview_ny(y0 as f32 / size.y);
-        self.ui.set_preview_nw((x1 - x0) as f32 / size.x);
-        self.ui.set_preview_nh((y1 - y0) as f32 / size.y);
+        self.ui.set_preview_nx(nx);
+        self.ui.set_preview_ny(ny);
+        self.ui.set_preview_nw(nw);
+        self.ui.set_preview_nh(nh);
         self.ui.set_preview_visible(true);
     }
 
     fn refresh_selection(&self) {
-        let size = self.size();
-        let r = self.selection;
-        self.ui.set_sel_nx(r.min.x / size.x);
-        self.ui.set_sel_ny(r.min.y / size.y);
-        self.ui.set_sel_nw((r.max.x - r.min.x) / size.x);
-        self.ui.set_sel_nh((r.max.y - r.min.y) / size.y);
+        let (nx, ny, nw, nh) = self.image_to_norm(self.selection);
+        self.ui.set_sel_nx(nx);
+        self.ui.set_sel_ny(ny);
+        self.ui.set_sel_nw(nw);
+        self.ui.set_sel_nh(nh);
         self.ui.set_sel_visible(true);
     }
 

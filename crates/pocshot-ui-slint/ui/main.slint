@@ -6,6 +6,11 @@
 export component EditorWindow inherits Window {
     in property <image> shot;
     in property <image> overlay;
+    // Where the image sits in the window (normalised 0..1).
+    in property <float> shot-nx;
+    in property <float> shot-ny;
+    in property <float> shot-nw: 1;
+    in property <float> shot-nh: 1;
     in property <image> preview;
     // Normalised (0..1) preview rectangle.
     in property <float> preview-nx;
@@ -36,18 +41,18 @@ export component EditorWindow inherits Window {
 
     Image {
         source: root.shot;
-        x: 0;
-        y: 0;
-        width: 100%;
-        height: 100%;
+        x: root.shot-nx * root.width;
+        y: root.shot-ny * root.height;
+        width: root.shot-nw * root.width;
+        height: root.shot-nh * root.height;
     }
 
     Image {
         source: root.overlay;
-        x: 0;
-        y: 0;
-        width: 100%;
-        height: 100%;
+        x: root.shot-nx * root.width;
+        y: root.shot-ny * root.height;
+        width: root.shot-nw * root.width;
+        height: root.shot-nh * root.height;
     }
 
     Image {
