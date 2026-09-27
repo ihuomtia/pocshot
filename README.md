@@ -86,6 +86,41 @@ wgpu enumerates no hardware adapter. Note: wgpu's CPU path needs a software
 Vulkan driver — `lavapipe` on Linux (Arch: `vulkan-swrast`), WARP on Windows.
 Without it wgpu picks the real GPU.
 
+### Diagnosing slowness on a VM or RDP session
+
+The CPU present path can dominate frame time. Capture a verbose log to a file
+(this matters on Windows: release builds have no console, so `2>log` captures
+nothing):
+
+```sh
+pocshot --software --log-file pocshot.log --log debug --repaint-probe
+```
+
+`--repaint-probe` renders continuously instead of sleeping when idle, which
+removes idle wait from the frame timings. With it on, the app logs, per frame:
+
+```
+gap      wall-clock between frames
+build    time spent inside update()
+raster   gap - build: raster + present (the interesting one on a CPU adapter)
+```
+
+A large `raster` with a small `build` means the cost is in presenting, not in
+the app's drawing. Three flags probe that directly:
+
+```sh
+pocshot --software --present-mode immediate   # never block on vsync
+pocshot --software --frame-latency 0          # let the present queue pipeline
+```
+
+The startup log also records the full wgpu picture — every adapter found, and
+the surface's supported present modes and alpha modes — so it is clear which
+options the machine can actually honour.
+
+To see the numbers on screen instead of in a log, enable
+**Settings → Debug Settings → Show performance HUD**. Clicking the HUD resets
+its rolling window, so a single interaction can be measured in isolation.
+
 Slim single-renderer builds (smaller binary, no fallback):
 
 ```sh

@@ -21,8 +21,47 @@ struct Cli {
     #[arg(long, global = true)]
     software: bool,
 
+    /// Write verbose logs to this file (and stderr). Useful on Windows where
+    /// release builds have no console.
+    #[arg(long, global = true, value_name = "PATH")]
+    log_file: Option<PathBuf>,
+
+    /// Log filter, env_logger syntax (e.g. `debug`, `pocshot_gui=trace,wgpu=debug`).
+    /// Overrides POCSHOT_LOG. Implies nothing on its own; use with --log-file.
+    #[arg(long, global = true, value_name = "FILTER")]
+    log: Option<String>,
+
+    /// wgpu present mode for the software renderer. Default keeps eframe's
+    /// AutoVsync, which on a CPU adapter can force a synchronous full-surface
+    /// copy to the compositor every frame.
+    #[arg(long, global = true, value_enum, value_name = "MODE")]
+    present_mode: Option<PresentModeArg>,
+
+    /// Frames the presentation engine may queue ahead (software renderer).
+    /// `0` disables the cap; the default of 1 favours latency over throughput.
+    #[arg(long, global = true, value_name = "N")]
+    frame_latency: Option<u32>,
+
+    /// Diagnostic: request a repaint every frame so frame timings contain no
+    /// idle wait. Makes the reported raster time (gap minus build) meaningful.
+    /// Renders as fast as the machine allows, so do not leave it on.
+    #[arg(long, global = true)]
+    repaint_probe: bool,
+
     #[command(subcommand)]
     command: Option<Command>,
+}
+
+/// wgpu present mode, exposed so the software renderer's present path can be
+/// A/B tested on a GPU-less machine without a rebuild.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum PresentModeArg {
+    /// Block on the display refresh (eframe's default).
+    Vsync,
+    /// Present immediately, never blocking on vsync.
+    Immediate,
+    /// Queue the newest frame, replacing any pending one.
+    Mailbox,
 }
 
 #[derive(Debug, Subcommand)]
@@ -144,9 +183,21 @@ impl From<FormatArg> for OutputFormat {
     }
 }
 
+impl From<PresentModeArg> for pocshot_gui::PresentMode {
+    fn from(value: PresentModeArg) -> Self {
+        match value {
+            PresentModeArg::Vsync => pocshot_gui::PresentMode::Vsync,
+            PresentModeArg::Immediate => pocshot_gui::PresentMode::Immediate,
+            PresentModeArg::Mailbox => pocshot_gui::PresentMode::Mailbox,
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    pocshot_gui::init_logging();
+    // Logging first, so everything below (including the renderer knobs and any
+    // startup failure) is captured when --log-file is given.
+    pocshot_gui::init_logging(cli.log_file.as_deref(), cli.log.as_deref());
     pocshot_core::install_panic_dialog_hook();
     // Wrap the dialog hook: if eframe's OpenGL backend panics on startup,
     // relaunch with the software renderer instead of showing a crash dialog.
@@ -154,6 +205,23 @@ fn main() -> anyhow::Result<()> {
     if cli.software {
         pocshot_gui::set_software_renderer();
     }
+    if let Some(mode) = cli.present_mode {
+        pocshot_gui::set_present_mode(mode.into());
+    }
+    if let Some(latency) = cli.frame_latency {
+        pocshot_gui::set_frame_latency(latency);
+    }
+    if cli.repaint_probe {
+        pocshot_gui::set_repaint_probe(true);
+    }
+    log::info!(
+        "cli: software={} present_mode={:?} frame_latency={:?} repaint_probe={} log_filter={:?}",
+        cli.software,
+        cli.present_mode,
+        cli.frame_latency,
+        cli.repaint_probe,
+        cli.log
+    );
 
     match cli.command {
         None | Some(Command::Gui) => {

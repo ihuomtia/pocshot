@@ -64,7 +64,7 @@ fn fullscreen_options() -> eframe::NativeOptions {
 }
 
 pub fn run() -> eframe::Result<()> {
-    crate::logging::init();
+    crate::logging::init_default();
 
     let result = eframe::run_native(
         "Pocshot",
@@ -86,7 +86,7 @@ fn finalize(result: eframe::Result<()>) -> eframe::Result<()> {
 /// The image is centred in the fullscreen canvas and pre-selected so it can be
 /// copied or saved immediately, then annotated/cropped like any capture.
 pub fn run_edit(image: RgbaImage) -> eframe::Result<()> {
-    crate::logging::init();
+    crate::logging::init_default();
 
     let result = eframe::run_native(
         "Pocshot",
@@ -113,7 +113,7 @@ pub(crate) fn vignette_edge_bands(rect: Rect, margin: f32) -> [Rect; 4] {
 }
 
 pub fn run_pin(image_path: PathBuf, x: i32, y: i32, width: u32, height: u32) -> eframe::Result<()> {
-    crate::logging::init();
+    crate::logging::init_default();
     let size = vec2(width.max(1) as f32, height.max(1) as f32);
     let pos = pos2(x as f32, y as f32);
     let mut options = eframe::NativeOptions {
@@ -303,6 +303,9 @@ struct PocshotApp {
     perf: PerfStats,
     /// Pixel dimensions of the captured canvas (the base image), for the HUD.
     canvas_px: [u32; 2],
+    /// `--repaint-probe`: request a repaint every frame so the measured frame
+    /// gap contains no idle wait, making `gap - build` purely raster+present.
+    repaint_probe: bool,
     /// Cached layout for the status pill so the galley is rebuilt only when
     /// the status text or theme generation changes. Stored as an `Arc` because
     /// egui returns the layout as `Arc<Galley>` and `Painter::galley` accepts
@@ -370,6 +373,7 @@ impl PocshotApp {
             show_perf_hud: settings.show_perf_hud,
             perf: PerfStats::default(),
             canvas_px: [0, 0],
+            repaint_probe: crate::renderer::repaint_probe_requested(),
             status_galley: None,
         };
         match source {
@@ -891,15 +895,6 @@ impl PocshotApp {
             let _ = ht;
         }
     }
-
-    /// Diagnostic probe: with `POCSHOT_REPAINT_PROBE=1`, every frame requests
-    /// the next one immediately. That removes idle wait from the measured
-    /// `gap`, so `gap - build` becomes purely raster+present time. Off by
-    /// default: it deliberately renders as fast as the machine allows, the
-    /// opposite of the app's normal idle-sleep behaviour.
-    fn repaint_probe_enabled() -> bool {
-        std::env::var("POCSHOT_REPAINT_PROBE").is_ok_and(|v| v == "1")
-    }
 }
 
 impl eframe::App for PocshotApp {
@@ -929,20 +924,30 @@ impl eframe::App for PocshotApp {
             let gap = t.elapsed();
             let build = self.last_build;
             self.perf.record(gap, build);
+            // Log slow frames at warn so they stand out even at the default
+            // filter; log every frame at debug for a full trace.
             if gap > Duration::from_millis(100) && ctx.has_requested_repaint() {
-                log::warn!("slow frame: gap={gap:?} build={build:?}");
+                log::warn!(
+                    "slow frame: gap={gap:?} build={build:?} raster~{:?}",
+                    gap.saturating_sub(build)
+                );
             } else {
-                log::debug!("frame: gap={gap:?} build={build:?}");
+                log::debug!(
+                    "frame: gap={gap:?} build={build:?} canvas={}x{} dpi={:.2}",
+                    self.canvas_px[0],
+                    self.canvas_px[1],
+                    ctx.pixels_per_point()
+                );
             }
         }
         self.last_frame = Some(Instant::now());
 
         // Diagnostic probe: with this on, every frame requests the next one
         // immediately, so there is no idle wait in `gap` and `gap - build` is
-        // purely raster+present. Off unless POCSHOT_REPAINT_PROBE=1, because it
-        // deliberately renders as fast as the machine allows (it is the opposite
-        // of the idle-sleep behaviour the app normally has).
-        if Self::repaint_probe_enabled() {
+        // purely raster+present. Off by default (--repaint-probe), because it
+        // deliberately renders as fast as the machine allows — the opposite of
+        // the app's normal idle-sleep behaviour.
+        if self.repaint_probe {
             ctx.request_repaint();
         }
 
@@ -1384,28 +1389,18 @@ mod tests {
         }
     }
 
-    /// The probe is env-driven; pin the exact match so the documented value
-    /// cannot silently stop working.
+    /// The probe is flag-driven; pin that the default is off so the app cannot
+    /// accidentally ship in "render as fast as possible" mode.
     #[test]
-    fn repaint_probe_requires_the_exact_value() {
-        let prev = std::env::var("POCSHOT_REPAINT_PROBE").ok();
+    fn repaint_probe_defaults_off_and_round_trips() {
+        let get = || crate::renderer::repaint_probe_requested();
+        crate::renderer::set_repaint_probe(false);
+        assert!(!get());
 
-        unsafe { std::env::set_var("POCSHOT_REPAINT_PROBE", "1") };
-        assert!(PocshotApp::repaint_probe_enabled());
+        crate::renderer::set_repaint_probe(true);
+        assert!(get());
 
-        for value in ["0", "", "true", "yes", "2"] {
-            unsafe { std::env::set_var("POCSHOT_REPAINT_PROBE", value) };
-            assert!(
-                !PocshotApp::repaint_probe_enabled(),
-                "{value:?} must not enable the probe"
-            );
-        }
-
-        unsafe {
-            match prev {
-                Some(v) => std::env::set_var("POCSHOT_REPAINT_PROBE", v),
-                None => std::env::remove_var("POCSHOT_REPAINT_PROBE"),
-            }
-        }
+        crate::renderer::set_repaint_probe(false);
+        assert!(!get());
     }
 }

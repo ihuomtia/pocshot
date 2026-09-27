@@ -65,6 +65,92 @@ enum ForcedRenderer {
 /// `--software` sets this; read on every `apply`/fallback decision.
 static FORCED: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
+/// Present mode requested via `--present-mode`. `Auto` keeps eframe's default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PresentMode {
+    Vsync,
+    Immediate,
+    Mailbox,
+}
+
+#[cfg(feature = "software")]
+static PRESENT_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Frame latency requested via `--frame-latency`. `None` keeps the default (1).
+/// Only read by the software renderer, so it is gated to keep GPU-only builds
+/// warning-free.
+#[cfg(feature = "software")]
+static FRAME_LATENCY: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(i64::MIN);
+#[cfg(feature = "software")]
+const FRAME_LATENCY_UNSET: i64 = i64::MIN;
+
+/// `--repaint-probe`: request a repaint every frame so frame timings contain no
+/// idle wait. A diagnostic, not a preference.
+static REPAINT_PROBE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Enable the repaint probe (`--repaint-probe`).
+pub fn set_repaint_probe(enabled: bool) {
+    REPAINT_PROBE.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether the repaint probe was requested via `--repaint-probe`.
+pub(crate) fn repaint_probe_requested() -> bool {
+    REPAINT_PROBE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Set the wgpu present mode for the software renderer (the `--present-mode`
+/// flag). Overrides eframe's `AutoVsync` default.
+///
+/// A no-op in builds without the software renderer, where the flag cannot
+/// affect anything.
+pub fn set_present_mode(mode: PresentMode) {
+    #[cfg(feature = "software")]
+    {
+        let value = match mode {
+            PresentMode::Vsync => 1,
+            PresentMode::Immediate => 2,
+            PresentMode::Mailbox => 3,
+        };
+        PRESENT_MODE.store(value, std::sync::atomic::Ordering::Relaxed);
+    }
+    #[cfg(not(feature = "software"))]
+    let _ = mode;
+}
+
+#[cfg(feature = "software")]
+fn requested_present_mode() -> Option<PresentMode> {
+    match PRESENT_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => Some(PresentMode::Vsync),
+        2 => Some(PresentMode::Immediate),
+        3 => Some(PresentMode::Mailbox),
+        _ => None,
+    }
+}
+
+/// Set how many frames the presentation engine may queue (the
+/// `--frame-latency` flag). `0` disables the cap; the default of 1 favours
+/// latency over throughput.
+///
+/// A no-op in builds without the software renderer.
+pub fn set_frame_latency(frames: u32) {
+    #[cfg(feature = "software")]
+    {
+        FRAME_LATENCY.store(i64::from(frames), std::sync::atomic::Ordering::Relaxed);
+    }
+    #[cfg(not(feature = "software"))]
+    let _ = frames;
+}
+
+/// The configured frame-latency cap, or the default of 1 when unset.
+#[cfg(feature = "software")]
+fn requested_frame_latency() -> Option<u32> {
+    match FRAME_LATENCY.load(std::sync::atomic::Ordering::Relaxed) {
+        FRAME_LATENCY_UNSET => Some(1), // existing default behaviour
+        0 => None,                      // explicitly uncapped
+        n => Some(n as u32),
+    }
+}
+
 fn forced_renderer() -> ForcedRenderer {
     match FORCED.load(std::sync::atomic::Ordering::Relaxed) {
         1 => ForcedRenderer::Gpu,
@@ -216,57 +302,36 @@ fn apply_gpu(options: &mut eframe::NativeOptions) {
     log::info!("using OpenGL (glow) renderer");
 }
 
-/// Parse `POCSHOT_FRAME_LATENCY`: unset → 1 (current default), `0` → None (no
-/// cap), `N` → Some(N). Invalid values fall back to the default.
-#[cfg(feature = "software")]
-fn parse_frame_latency(value: Option<&str>) -> Option<u32> {
-    match value.and_then(|v| v.trim().parse::<u32>().ok()) {
-        Some(0) => None,
-        Some(n) => Some(n),
-        None => Some(1),
-    }
-}
-
-/// Parse `POCSHOT_PRESENT_MODE` into a wgpu present mode. `None` leaves
-/// eframe's default (AutoVsync).
-#[cfg(feature = "software")]
-fn parse_present_mode(value: Option<&str>) -> Option<eframe::wgpu::PresentMode> {
-    match value?.trim().to_ascii_lowercase().as_str() {
-        "immediate" | "now" | "nosync" => Some(eframe::wgpu::PresentMode::Immediate),
-        "mailbox" => Some(eframe::wgpu::PresentMode::Mailbox),
-        "vsync" | "fifo" | "auto" => Some(eframe::wgpu::PresentMode::AutoVsync),
-        _ => None,
-    }
-}
-
 /// Force wgpu onto a software (CPU) adapter.
 #[cfg(feature = "software")]
 fn apply_software(options: &mut eframe::NativeOptions) {
     use std::sync::Arc;
 
     options.renderer = eframe::Renderer::Wgpu;
-    // Don't let the CPU adapter queue frames ahead of the display: on WARP /
-    // lavapipe the default queue makes input feel laggy even when every frame
-    // renders in reasonable time.
-    //
-    // Overridable, because this is also a suspect for the ~250ms/frame seen on
-    // a VM: forbidding pipelining means every present must complete before the
-    // next frame can start. POCSHOT_FRAME_LATENCY=0 disables it, =N sets N.
-    options.wgpu_options.desired_maximum_frame_latency =
-        parse_frame_latency(std::env::var("POCSHOT_FRAME_LATENCY").ok().as_deref());
 
-    // Present mode. Defaults to eframe's AutoVsync, which on a CPU adapter can
-    // mean a synchronous full-surface copy to the compositor every frame — a
-    // cost that does not shrink when the app draws less. POCSHOT_PRESENT_MODE
-    // allows A/B testing: vsync (default) | immediate | mailbox.
-    if let Some(mode) = parse_present_mode(std::env::var("POCSHOT_PRESENT_MODE").ok().as_deref()) {
-        log::info!("software renderer: present mode forced to {mode:?}");
-        options.wgpu_options.present_mode = mode;
-    }
+    // Frames the presentation engine may queue. The default of 1 was added to
+    // stop WARP queueing frames ahead of the display, but it also forbids
+    // pipelining — every present must finish before the next frame starts —
+    // which is a suspect for the ~250ms/frame measured on a VM.
+    options.wgpu_options.desired_maximum_frame_latency = requested_frame_latency();
     log::info!(
         "software renderer: desired_maximum_frame_latency = {:?}",
         options.wgpu_options.desired_maximum_frame_latency
     );
+
+    // Present mode. eframe defaults to AutoVsync, which on a CPU adapter with
+    // no GPU flip path can mean a synchronous full-surface copy to the
+    // compositor every frame — a cost that does not shrink when the app draws
+    // less. `--present-mode` allows A/B testing that on the target machine.
+    if let Some(mode) = requested_present_mode() {
+        let (wgpu_mode, label) = match mode {
+            PresentMode::Vsync => (eframe::wgpu::PresentMode::AutoVsync, "vsync"),
+            PresentMode::Immediate => (eframe::wgpu::PresentMode::Immediate, "immediate"),
+            PresentMode::Mailbox => (eframe::wgpu::PresentMode::Mailbox, "mailbox"),
+        };
+        log::info!("software renderer: present mode forced to {label} ({wgpu_mode:?})");
+        options.wgpu_options.present_mode = wgpu_mode;
+    }
 
     let setup = eframe::egui_wgpu::WgpuSetupCreateNew {
         native_adapter_selector: Some(Arc::new(select_software_adapter)),
@@ -277,10 +342,20 @@ fn apply_software(options: &mut eframe::NativeOptions) {
     log::info!(
         "software renderer: selecting a CPU wgpu adapter (WARP on Windows, lavapipe on Linux)"
     );
+    log::info!(
+        "software renderer: transparent window = {:?} (per-pixel alpha can force a \
+         full-surface composite instead of a flip)",
+        options.viewport.transparent
+    );
 }
 
 /// Prefer a CPU rasterizer (WARP / lavapipe); fall back to any adapter that can
 /// present to the surface, so the software build still starts on a GPU machine.
+///
+/// Logs the full adapter/surface capability picture at info level: on a
+/// GPU-less VM the present path is the suspect for frame-time problems, and
+/// whether a fast present mode or an opaque alpha mode is even *available* is
+/// decided here.
 #[cfg(feature = "software")]
 fn select_software_adapter(
     adapters: &[eframe::wgpu::Adapter],
@@ -291,6 +366,39 @@ fn select_software_adapter(
     let presentable = |adapter: &Adapter| {
         compatible_surface.is_none_or(|surface| adapter.is_surface_supported(surface))
     };
+
+    log::info!("wgpu adapter enumeration ({} found):", adapters.len());
+    for (i, adapter) in adapters.iter().enumerate() {
+        let info = adapter.get_info();
+        log::info!(
+            "  [{i}] {} | type={:?} backend={:?} driver={} {} | surface_supported={}",
+            info.name,
+            info.device_type,
+            info.backend,
+            info.driver,
+            info.driver_info,
+            presentable(adapter)
+        );
+    }
+    if let Some(surface) = compatible_surface {
+        let caps = surface.get_capabilities(
+            adapters
+                .iter()
+                .find(|a| presentable(a))
+                .expect("a presentable adapter must exist if a surface was provided"),
+        );
+        log::info!("  surface: formats={:?}", caps.formats);
+        log::info!("  surface: present_modes={:?}", caps.present_modes);
+        log::info!("  surface: alpha_modes={:?}", caps.alpha_modes);
+        log::info!(
+            "  surface: supported_present_modes -> immediate={} mailbox={} fifo={}",
+            caps.present_modes.contains(&eframe::wgpu::PresentMode::Immediate),
+            caps.present_modes.contains(&eframe::wgpu::PresentMode::Mailbox),
+            caps.present_modes.contains(&eframe::wgpu::PresentMode::Fifo),
+        );
+    } else {
+        log::info!("  surface: none provided (no present-capability info)");
+    }
 
     let chosen = adapters
         .iter()
@@ -447,34 +555,35 @@ mod tests {
 
     #[cfg(feature = "software")]
     #[test]
-    fn frame_latency_parsing_keeps_the_default_and_allows_opt_out() {
-        // Unset or garbage keeps the current behaviour (cap at 1).
-        assert_eq!(parse_frame_latency(None), Some(1));
-        assert_eq!(parse_frame_latency(Some("junk")), Some(1));
-        assert_eq!(parse_frame_latency(Some("")), Some(1));
-        // 0 means "no cap" (None), N passes through.
-        assert_eq!(parse_frame_latency(Some("0")), None);
-        assert_eq!(parse_frame_latency(Some("2")), Some(2));
-        assert_eq!(parse_frame_latency(Some(" 3 ")), Some(3));
+    fn frame_latency_defaults_to_one_and_zero_means_uncapped() {
+        // The pre-flag default must be preserved.
+        FRAME_LATENCY.store(FRAME_LATENCY_UNSET, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(requested_frame_latency(), Some(1));
+
+        // 0 is the documented "no cap".
+        set_frame_latency(0);
+        assert_eq!(requested_frame_latency(), None);
+
+        // Anything else passes through.
+        set_frame_latency(3);
+        assert_eq!(requested_frame_latency(), Some(3));
+
+        // Restore, so test order cannot leak state into other tests.
+        FRAME_LATENCY.store(FRAME_LATENCY_UNSET, std::sync::atomic::Ordering::Relaxed);
     }
 
     #[cfg(feature = "software")]
     #[test]
-    fn present_mode_parsing_maps_the_documented_spellings() {
-        use eframe::wgpu::PresentMode;
-        assert_eq!(
-            parse_present_mode(Some("immediate")),
-            Some(PresentMode::Immediate)
-        );
-        assert_eq!(parse_present_mode(Some("NOSYNC")), Some(PresentMode::Immediate));
-        assert_eq!(parse_present_mode(Some("mailbox")), Some(PresentMode::Mailbox));
-        assert_eq!(
-            parse_present_mode(Some("vsync")),
-            Some(PresentMode::AutoVsync)
-        );
-        // Unset or unknown leaves eframe's default untouched.
-        assert_eq!(parse_present_mode(None), None);
-        assert_eq!(parse_present_mode(Some("bogus")), None);
+    fn present_mode_is_unset_by_default() {
+        PRESENT_MODE.store(0, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(requested_present_mode(), None, "eframe default must stand");
+
+        for mode in [PresentMode::Vsync, PresentMode::Immediate, PresentMode::Mailbox] {
+            set_present_mode(mode);
+            assert_eq!(requested_present_mode(), Some(mode));
+        }
+
+        PRESENT_MODE.store(0, std::sync::atomic::Ordering::Relaxed);
     }
 
     #[test]
