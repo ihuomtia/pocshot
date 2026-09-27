@@ -197,6 +197,7 @@ impl PocshotApp {
         let Some(selection) = self.selection else {
             if self.show_snap_lines {
                 self.draw_snap_overlay(painter, draw_rect);
+                self.draw_annotation_snap_lines(painter, draw_rect, image_size);
             }
             return;
         };
@@ -213,6 +214,37 @@ impl PocshotApp {
 
         if self.show_snap_lines {
             self.draw_snap_overlay(painter, draw_rect);
+            self.draw_annotation_snap_lines(painter, draw_rect, image_size);
+        }
+    }
+
+    /// Annotation-attached snap guides are drawn as vectors on top of the
+    /// baked overlay because they change on every commit and must not be part
+    /// of the cached texture.
+    fn draw_annotation_snap_lines(
+        &self,
+        painter: &egui::Painter,
+        draw_rect: Rect,
+        image_size: Vec2,
+    ) {
+        let snap_color = self.theme.colors.snap_line;
+        let (horiz_snaps, vert_snaps) = self.annotations.snap_lines();
+
+        for &line_y in &horiz_snaps {
+            let y_pix = draw_rect.min.y
+                + line_y.clamp(0.0, image_size.y) / image_size.y * draw_rect.height();
+            painter.line_segment(
+                [pos2(draw_rect.min.x, y_pix), pos2(draw_rect.max.x, y_pix)],
+                Stroke::new(1.0_f32, snap_color),
+            );
+        }
+        for &line_x in &vert_snaps {
+            let x_pix = draw_rect.min.x
+                + line_x.clamp(0.0, image_size.x) / image_size.x * draw_rect.width();
+            painter.line_segment(
+                [pos2(x_pix, draw_rect.min.y), pos2(x_pix, draw_rect.max.y)],
+                Stroke::new(1.0_f32, snap_color),
+            );
         }
     }
 
