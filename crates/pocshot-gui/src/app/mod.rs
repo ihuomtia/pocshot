@@ -4,6 +4,7 @@ mod ocr;
 mod overlay;
 mod selection_ui;
 mod settings;
+mod snap_overlay;
 mod text_border;
 
 use eframe::egui::{
@@ -197,6 +198,10 @@ impl eframe::App for PinApp {
     }
 }
 
+type SnapOverlayKey = (u64, u64, u64, bool, bool, u64);
+// (capture_version, snap_lines_generation, ocr_ready_version,
+//  ocr_enabled, show_snap_lines, theme_generation)
+
 struct PocshotApp {
     capture: Option<RgbaImage>,
     /// In-flight screen capture off the UI thread. Capturing (especially the
@@ -258,6 +263,10 @@ struct PocshotApp {
     /// Time of the previous frame, used to log frame timing for performance
     /// measurement (especially on software renderers).
     last_frame: Option<Instant>,
+    snap_overlay: Option<TextureHandle>,
+    snap_overlay_key: SnapOverlayKey,
+    snap_lines_generation: u64,
+    theme_generation: u64,
 }
 
 impl PocshotApp {
@@ -310,6 +319,10 @@ impl PocshotApp {
             clipboard_mode: matches!(source, AppSource::Clipboard(_)),
             theme: settings.theme,
             last_frame: None,
+            snap_overlay: None,
+            snap_overlay_key: (0, 0, 0, false, false, 0),
+            snap_lines_generation: 0,
+            theme_generation: 0,
         };
         match source {
             AppSource::Screen => app.begin_capture(&cc.egui_ctx),
@@ -424,6 +437,7 @@ impl PocshotApp {
             horizontal: vec![0.0, ih],
             vertical: vec![0.0, iw],
         });
+        self.snap_lines_generation += 1;
 
         let (tx, rx) = mpsc::channel();
         self.snap_lines_rx = Some(rx);
@@ -636,14 +650,14 @@ impl PocshotApp {
         }
     }
 
-    fn combined_snap_lines(&self) -> (Vec<f32>, Vec<f32>) {
+    /// Guides baked into the snap overlay: OS + Sobel snap lines and OCR
+    /// paragraph guides. Annotation-attached guides are excluded — they are
+    /// few, drawn as vectors, and change with every commit.
+    fn snap_guide_lines(&self) -> (Vec<f32>, Vec<f32>) {
         let (mut horiz, mut vert) = match &self.snap_lines {
             Some(sl) => (sl.horizontal.clone(), sl.vertical.clone()),
             None => (Vec::new(), Vec::new()),
         };
-        let (anno_h, anno_v) = self.annotations.snap_lines();
-        horiz.extend(anno_h);
-        vert.extend(anno_v);
         if self.ocr_enabled && !self.ocr_regions.is_empty() {
             if let Some(cap) = &self.capture {
                 let guides = text_regions_to_guides(
@@ -655,6 +669,14 @@ impl PocshotApp {
                 vert.extend(guides.vertical);
             }
         }
+        (horiz, vert)
+    }
+
+    fn combined_snap_lines(&self) -> (Vec<f32>, Vec<f32>) {
+        let (mut horiz, mut vert) = self.snap_guide_lines();
+        let (anno_h, anno_v) = self.annotations.snap_lines();
+        horiz.extend(anno_h);
+        vert.extend(anno_v);
         (horiz, vert)
     }
 
@@ -857,6 +879,7 @@ impl eframe::App for PocshotApp {
                     sl.vertical.len()
                 );
                 self.snap_lines = Some(sl);
+                self.snap_lines_generation += 1;
                 self.snap_lines_rx = None;
             } else {
                 ctx.request_repaint_after(WORKER_WATCHDOG_INTERVAL);
@@ -866,6 +889,7 @@ impl eframe::App for PocshotApp {
         self.poll_ocr(ctx);
         self.poll_effect(ctx);
         self.maybe_ocr_rerun(ctx);
+        self.refresh_snap_overlay(ctx);
 
         let snap_ok = self.snap_enabled && !ctx.input(|i| i.modifiers.shift);
         let settings_before = self.to_settings();
@@ -1116,6 +1140,7 @@ impl eframe::App for PocshotApp {
                 if reload_theme {
                     let loaded = config::load();
                     self.theme = loaded.theme;
+                    self.theme_generation += 1;
                     self.status = "Theme reloaded".to_string();
                     ui.ctx().request_repaint();
                 }

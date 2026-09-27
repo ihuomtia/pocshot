@@ -196,7 +196,7 @@ impl PocshotApp {
     ) {
         let Some(selection) = self.selection else {
             if self.show_snap_lines {
-                self.draw_all_snap_indicators(painter, draw_rect, image_size);
+                self.draw_snap_overlay(painter, draw_rect);
             }
             return;
         };
@@ -212,7 +212,7 @@ impl PocshotApp {
         );
 
         if self.show_snap_lines {
-            self.draw_all_snap_indicators(painter, draw_rect, image_size);
+            self.draw_snap_overlay(painter, draw_rect);
         }
     }
 
