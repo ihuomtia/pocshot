@@ -168,6 +168,7 @@ export component EditorWindow inherits Window {
         Chip { label: "‑"; clicked => { root.action("width-"); } }
         Chip { label: "+"; clicked => { root.action("width+"); } }
         Chip { label: "↶"; clicked => { root.action("undo"); } }
+        Chip { label: "↷"; clicked => { root.action("redo"); } }
         Chip { label: "OCR"; chip-width: 44px; clicked => { root.action("ocr"); } }
         Chip { label: "Pin"; chip-width: 44px; clicked => { root.action("pin"); } }
         Chip { label: "Copy"; chip-width: 52px; clicked => { root.action("copy"); } }

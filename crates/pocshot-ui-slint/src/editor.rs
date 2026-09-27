@@ -63,6 +63,8 @@ pub struct Editor {
     typing_text: bool,
     /// Undo snapshots (base + annotations), newest last.
     history: Vec<HistoryEntry>,
+    /// Snapshots undone and available to redo.
+    redo_stack: Vec<HistoryEntry>,
     /// In-progress blur/pixelate region (image pixels).
     effect_anchor: Pos2,
     effect_rect: Option<Rect>,
@@ -124,6 +126,7 @@ impl Editor {
             counter: 1,
             typing_text: false,
             history: Vec::new(),
+            redo_stack: Vec::new(),
             effect_anchor: Pos2::ZERO,
             effect_rect: None,
             snap_lines,
@@ -373,7 +376,7 @@ impl Editor {
                     if shape.kind() == ToolKind::Counter {
                         self.counter += 1;
                     }
-                    self.history.push(self.snapshot());
+                    self.checkpoint();
                     self.annotations.push(Annotation {
                         shape,
                         color: self.color,
@@ -401,6 +404,7 @@ impl Editor {
                 self.refresh_hint();
             }
             "undo" => self.undo(),
+            "redo" => self.redo(),
             "ocr" => self.toggle_ocr(),
             "copy" => self.copy_and_quit(),
             "save" => self.save_and_quit(),
@@ -439,7 +443,15 @@ impl Editor {
             return;
         }
         if ctrl && lower == "z" {
-            self.undo();
+            if shift {
+                self.redo();
+            } else {
+                self.undo();
+            }
+            return;
+        }
+        if ctrl && lower == "y" {
+            self.redo();
             return;
         }
         if ctrl {
@@ -502,7 +514,7 @@ impl Editor {
                 if let Some(shape) = self.current.take() {
                     let keep = matches!(&shape, Shape::Text { text, .. } if !text.trim().is_empty());
                     if keep {
-                        self.history.push(self.snapshot());
+                        self.checkpoint();
                         self.annotations.push(Annotation {
                             shape,
                             color: self.color,
@@ -640,20 +652,40 @@ impl Editor {
             .iter()
             .rposition(|annotation| annotation.shape.hit_test(pos, 6.0));
         if let Some(index) = hit {
-            self.history.push(self.snapshot());
+            self.checkpoint();
             self.annotations.remove(index);
             self.rebuild_composited();
         }
     }
 
+    /// Record the current state before a mutation; clears the redo stack.
+    fn checkpoint(&mut self) {
+        self.history.push(self.snapshot());
+        self.redo_stack.clear();
+    }
+
     /// Restore the previous base/annotations snapshot.
     fn undo(&mut self) {
         if let Some(entry) = self.history.pop() {
-            self.base = entry.base;
-            self.annotations = entry.annotations;
-            self.rebuild_composited();
-            self.refresh_preview();
+            let current = self.snapshot();
+            self.redo_stack.push(current);
+            self.restore(entry);
         }
+    }
+
+    fn redo(&mut self) {
+        if let Some(entry) = self.redo_stack.pop() {
+            let current = self.snapshot();
+            self.history.push(current);
+            self.restore(entry);
+        }
+    }
+
+    fn restore(&mut self, entry: HistoryEntry) {
+        self.base = entry.base;
+        self.annotations = entry.annotations;
+        self.rebuild_composited();
+        self.refresh_preview();
     }
 
     /// Apply the current destructive tool to `rect` (image pixels).
@@ -663,7 +695,7 @@ impl Editor {
             return;
         }
         let tool = self.tool;
-        self.history.push(self.snapshot());
+        self.checkpoint();
         let base = Rc::make_mut(&mut self.base);
         match tool {
             ToolKind::Pixelate => effects::pixelate_region(base, rect, 16),
