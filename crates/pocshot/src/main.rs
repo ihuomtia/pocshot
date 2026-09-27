@@ -48,6 +48,11 @@ struct Cli {
     #[arg(long, global = true)]
     repaint_probe: bool,
 
+    /// Diagnostic: skip drawing the screenshot texture, keeping the window
+    /// otherwise identical. Isolates the cost of the fullscreen blit.
+    #[arg(long, global = true)]
+    no_canvas: bool,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -213,6 +218,9 @@ fn main() -> anyhow::Result<()> {
     }
     if cli.repaint_probe {
         pocshot_gui::set_repaint_probe(true);
+    }
+    if cli.no_canvas {
+        pocshot_gui::set_no_canvas(true);
     }
     log::info!(
         "cli: software={} present_mode={:?} frame_latency={:?} repaint_probe={} log_filter={:?}",

@@ -221,8 +221,61 @@ impl PocshotApp {
     }
 }
 
+/// Per-phase timings of one `update()`, for locating where build time goes.
+///
+/// `build` in the HUD is the total; these split it so a regression can be
+/// attributed rather than just observed. Cheap: a handful of `Instant`s per
+/// frame, and only formatted when a debug log line is actually emitted.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct BuildPhases {
+    /// Worker polling, capture/snap/OCR/effect bookkeeping.
+    pub(crate) polls: Duration,
+    /// Drawing the screenshot texture (the fullscreen blit).
+    pub(crate) canvas_blit: Duration,
+    /// Toolbar, help, settings panel, status line, HUD.
+    pub(crate) chrome: Duration,
+    /// Selection chrome, annotations, effect/OCR overlays.
+    pub(crate) overlays: Duration,
+}
+
+impl BuildPhases {
+    /// The three phases other than `polls`, as one figure.
+    pub(crate) fn draw(&self) -> Duration {
+        self.canvas_blit + self.chrome + self.overlays
+    }
+
+    /// Compact one-line form for the frame debug log.
+    pub(crate) fn summary(&self) -> String {
+        format!(
+            "polls={:?} blit={:?} overlays={:?} chrome={:?}",
+            self.polls, self.canvas_blit, self.overlays, self.chrome
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn draw_excludes_polling() {
+        let p = BuildPhases {
+            polls: Duration::from_millis(5),
+            canvas_blit: Duration::from_millis(2),
+            chrome: Duration::from_millis(1),
+            overlays: Duration::from_millis(3),
+        };
+        assert_eq!(p.draw(), Duration::from_millis(6));
+    }
+
+    #[test]
+    fn phase_summary_names_every_phase() {
+        let p = BuildPhases::default();
+        let s = p.summary();
+        for field in ["polls=", "blit=", "overlays=", "chrome="] {
+            assert!(s.contains(field), "{s:?} missing {field:?}");
+        }
+    }
     use super::*;
 
     fn stats_from(gaps_ms: &[u64], builds_ms: &[u64]) -> PerfStats {

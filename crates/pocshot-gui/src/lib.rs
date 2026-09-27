@@ -14,8 +14,8 @@ mod window_snap;
 
 pub use app::{run, run_edit, run_pin};
 pub use renderer::{
-    install_fallback_hook, set_frame_latency, set_present_mode, set_repaint_probe,
-    set_software_renderer, PresentMode,
+    install_fallback_hook, set_frame_latency, set_no_canvas, set_present_mode,
+    set_repaint_probe, set_software_renderer, PresentMode,
 };
 
 /// Initialize the process-wide logger (used by the `pocshot` CLI too, which

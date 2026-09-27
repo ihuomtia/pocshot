@@ -98,6 +98,20 @@ pub(crate) fn repaint_probe_requested() -> bool {
     REPAINT_PROBE.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// `--no-canvas`: draw the window without the screenshot texture. A diagnostic
+/// that isolates the cost of the fullscreen blit from the rest of the frame.
+static NO_CANVAS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Enable the no-canvas diagnostic (`--no-canvas`).
+pub fn set_no_canvas(enabled: bool) {
+    NO_CANVAS.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether the no-canvas diagnostic was requested via `--no-canvas`.
+pub(crate) fn no_canvas_requested() -> bool {
+    NO_CANVAS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Set the wgpu present mode for the software renderer (the `--present-mode`
 /// flag). Overrides eframe's `AutoVsync` default.
 ///

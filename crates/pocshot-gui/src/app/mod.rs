@@ -24,7 +24,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::annotation::{AnnotationState, AnnotationTool};
-use crate::app::perf_hud::PerfStats;
+use crate::app::perf_hud::{BuildPhases, PerfStats};
 use crate::canvas::{capture_size, clamp_image_rect, fit_rect, native_rect, screen_to_image};
 use crate::config;
 use crate::selection::{handle_rects, HandleType, ImageSelection};
@@ -306,6 +306,12 @@ struct PocshotApp {
     /// `--repaint-probe`: request a repaint every frame so the measured frame
     /// gap contains no idle wait, making `gap - build` purely raster+present.
     repaint_probe: bool,
+    /// `--no-canvas`: skip drawing the screenshot texture (and everything that
+    /// depends on it), keeping the window otherwise identical. Diagnostic only:
+    /// isolates the cost of the fullscreen blit from the rest of the frame.
+    no_canvas: bool,
+    /// Per-phase timings for the previous frame, logged when `--log debug`.
+    build_phases: BuildPhases,
     /// Cached layout for the status pill so the galley is rebuilt only when
     /// the status text or theme generation changes. Stored as an `Arc` because
     /// egui returns the layout as `Arc<Galley>` and `Painter::galley` accepts
@@ -374,6 +380,8 @@ impl PocshotApp {
             perf: PerfStats::default(),
             canvas_px: [0, 0],
             repaint_probe: crate::renderer::repaint_probe_requested(),
+            no_canvas: crate::renderer::no_canvas_requested(),
+            build_phases: BuildPhases::default(),
             status_galley: None,
         };
         match source {
@@ -928,12 +936,15 @@ impl eframe::App for PocshotApp {
             // filter; log every frame at debug for a full trace.
             if gap > Duration::from_millis(100) && ctx.has_requested_repaint() {
                 log::warn!(
-                    "slow frame: gap={gap:?} build={build:?} raster~{:?}",
-                    gap.saturating_sub(build)
+                    "slow frame: gap={gap:?} build={build:?} draw={:?} raster~{:?} {}",
+                    self.build_phases.draw(),
+                    gap.saturating_sub(build),
+                    self.build_phases.summary()
                 );
             } else {
                 log::debug!(
-                    "frame: gap={gap:?} build={build:?} canvas={}x{} dpi={:.2}",
+                    "frame: gap={gap:?} build={build:?} {} canvas={}x{} dpi={:.2}",
+                    self.build_phases.summary(),
                     self.canvas_px[0],
                     self.canvas_px[1],
                     ctx.pixels_per_point()
@@ -951,6 +962,7 @@ impl eframe::App for PocshotApp {
             ctx.request_repaint();
         }
 
+        let polls_start = Instant::now();
         self.poll_capture(ctx);
         if let Some(rx) = &self.snap_lines_rx {
             match rx.try_recv() {
@@ -977,6 +989,7 @@ impl eframe::App for PocshotApp {
         self.poll_effect(ctx);
         self.maybe_ocr_rerun(ctx);
         self.refresh_snap_overlay(ctx);
+        let polls = polls_start.elapsed();
 
         let snap_ok = self.snap_enabled && !ctx.input(|i| i.modifiers.shift);
         let models_dir_before = self.show_settings.then(|| self.ocr_models_dir.clone());
@@ -1031,12 +1044,16 @@ impl eframe::App for PocshotApp {
                 // clipboard image. Image-space painting still maps into
                 // `draw_rect`.
                 let painter = ui.painter().clone();
-                painter.image(
-                    texture.id(),
-                    draw_rect,
-                    Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
-                    Color32::WHITE,
-                );
+                let blit_start = Instant::now();
+                if !self.no_canvas {
+                    painter.image(
+                        texture.id(),
+                        draw_rect,
+                        Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                }
+                let canvas_blit = blit_start.elapsed();
 
                 let no_selection = self.selection.is_none() && self.drag_start.is_none();
                 if no_selection {
@@ -1316,6 +1333,7 @@ impl eframe::App for PocshotApp {
                     }
                 }
 
+                let overlays_start = Instant::now();
                 self.draw_selection_base(ui, &painter, &texture, draw_rect, image_size);
                 if snap_ok {
                     self.draw_brief_snap_indicators(&painter, draw_rect, image_size);
@@ -1325,8 +1343,19 @@ impl eframe::App for PocshotApp {
                 self.draw_effect_preview(&painter, draw_rect, image_size);
                 self.draw_ocr_overlay(&painter, draw_rect, image_size);
                 self.draw_selection_top(ui, &painter, &texture, draw_rect, image_size);
+                let overlays = overlays_start.elapsed();
+
+                let chrome_start = Instant::now();
                 self.draw_status_line(&painter, draw_rect, &status);
                 self.draw_perf_hud(ui, &painter, draw_rect, crate::renderer::active_label());
+                let chrome = chrome_start.elapsed();
+
+                self.build_phases = BuildPhases {
+                    polls,
+                    canvas_blit,
+                    chrome,
+                    overlays,
+                };
                 if self.annotations.is_text_editing() {
                     self.draw_text_editor(ui, draw_rect, image_size);
                 }
