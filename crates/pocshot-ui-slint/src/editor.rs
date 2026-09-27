@@ -578,8 +578,19 @@ impl Editor {
         let (ctrl, shift) = platform::query_modifiers();
         let lower = text.to_ascii_lowercase();
 
-        if text == "q" || text == "\u{1b}" {
+        if text == "q" {
             crate::quit_event_loop();
+            return;
+        }
+        if text == "\u{1b}" {
+            // Esc: first clears the selection, then quits.
+            if self.selection_is_full() {
+                crate::quit_event_loop();
+            } else {
+                self.selection = self.image_rect();
+                self.refresh_selection();
+                self.refresh_hint();
+            }
             return;
         }
         if (ctrl && lower == "c") || text == "\n" || text == "\u{0d}" || text == " " {
@@ -986,7 +997,7 @@ impl Editor {
         }
         self.ui.set_hint(
             format!(
-                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · G highlight-text · N counter · T text · B blur · M pixelate · E eraser · V select · O OCR · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
+                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · G highlight-text · N counter · T text · B blur · M pixelate · E eraser · V select · O OCR · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc clear or quit",
                 self.tool,
                 self.color_index(),
                 self.width

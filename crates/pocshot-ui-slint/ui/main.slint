@@ -175,6 +175,7 @@ export component EditorWindow inherits Window {
     }
 
     ta := TouchArea {
+        mouse-cursor: crosshair;
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
                 root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 0);
@@ -186,6 +187,36 @@ export component EditorWindow inherits Window {
                 root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 2);
             }
         }
+    }
+
+    // Dim everything outside the selection (only once a real selection exists).
+    if (root.sel-handles-visible) : Rectangle {
+        x: root.shot-nx * root.width;
+        y: root.shot-ny * root.height;
+        width: root.shot-nw * root.width;
+        height: (root.sel-ny - root.shot-ny) * root.height;
+        background: #00000066;
+    }
+    if (root.sel-handles-visible) : Rectangle {
+        x: root.shot-nx * root.width;
+        y: (root.sel-ny + root.sel-nh) * root.height;
+        width: root.shot-nw * root.width;
+        height: (root.shot-ny + root.shot-nh - root.sel-ny - root.sel-nh) * root.height;
+        background: #00000066;
+    }
+    if (root.sel-handles-visible) : Rectangle {
+        x: root.shot-nx * root.width;
+        y: root.sel-ny * root.height;
+        width: (root.sel-nx - root.shot-nx) * root.width;
+        height: root.sel-nh * root.height;
+        background: #00000066;
+    }
+    if (root.sel-handles-visible) : Rectangle {
+        x: (root.sel-nx + root.sel-nw) * root.width;
+        y: root.sel-ny * root.height;
+        width: (root.shot-nx + root.shot-nw - root.sel-nx - root.sel-nw) * root.width;
+        height: root.sel-nh * root.height;
+        background: #00000066;
     }
 
     Rectangle {
