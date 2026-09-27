@@ -97,12 +97,22 @@ pub struct Editor {
     settings: pocshot_config::AppSettings,
     /// Colour presets in use (theme swatches, falling back to the built-ins).
     palette: [Color32; 6],
+    ocr_confidence: f32,
+    help_visible: bool,
 }
 
 /// Padding around detected text regions for the highlight-text tool.
 const TEXT_BORDER_PADDING: f32 = 6.0;
 /// Redact boxes only pad vertically by one pixel.
 const REDACT_VERTICAL_PADDING: f32 = 1.0;
+
+/// Shortcut reference shown by the help overlay (?, /).
+const HELP_TEXT: &str = "\
+Tools: V select · R rect · Shift+R filled · L line · A arrow · C circle · Shift+C filled
+P pen · H highlighter · D redact · G text border · N counter · T text · B blur · M pixelate · E eraser
+Colors: 1-6 · Stroke width: [ and ] · Ctrl while dragging: square / circle / 45 degrees
+Enter or Ctrl+C copy · Ctrl+S save · Ctrl+Z undo · Ctrl+Shift+Z redo · O OCR
+Shift disables snapping · Esc clears the selection, then quits · ? toggles this help";
 
 /// Convert an `ecolor::Color32` to a Slint colour.
 fn to_slint_color(color: Color32) -> slint::Color {
@@ -167,6 +177,7 @@ impl Editor {
         let text_size = settings.theme.fonts.annotation_text;
         let copy_on_save = settings.copy_on_save;
         let snap_enabled = settings.snap_enabled;
+        let ocr_confidence = settings.ocr_confidence;
         let default_color = settings.theme.colors.default_annotation_color;
         let mut palette = PALETTE;
         for (index, color) in settings
@@ -220,6 +231,8 @@ impl Editor {
             source_is_clipboard,
             settings,
             palette,
+            ocr_confidence: ocr_confidence.clamp(0.1, 0.95),
+            help_visible: false,
         }));
 
         {
@@ -290,6 +303,7 @@ impl Editor {
         editor.borrow().refresh_preview();
         editor.borrow().refresh_hint();
         editor.borrow().apply_theme();
+        editor.borrow().ui.set_help_text(HELP_TEXT.into());
         editor
     }
 
@@ -605,6 +619,45 @@ impl Editor {
                 self.persist_settings();
                 self.refresh_hint();
             }
+            "ocr-confidence-" => {
+                self.ocr_confidence = (self.ocr_confidence - 0.05).max(0.1);
+                self.settings.ocr_confidence = self.ocr_confidence;
+                self.persist_settings();
+                self.refresh_hint();
+            }
+            "ocr-confidence+" => {
+                self.ocr_confidence = (self.ocr_confidence + 0.05).min(0.95);
+                self.settings.ocr_confidence = self.ocr_confidence;
+                self.persist_settings();
+                self.refresh_hint();
+            }
+            "reload-theme" => {
+                self.settings = pocshot_config::config::load();
+                self.text_size = self.settings.theme.fonts.annotation_text;
+                self.ocr_confidence = self.settings.ocr_confidence.clamp(0.1, 0.95);
+                self.copy_on_save = self.settings.copy_on_save;
+                self.snap_enabled = self.settings.snap_enabled;
+                let mut palette = PALETTE;
+                for (index, color) in self
+                    .settings
+                    .theme
+                    .colors
+                    .color_swatches
+                    .iter()
+                    .take(6)
+                    .enumerate()
+                {
+                    palette[index] = *color;
+                }
+                self.palette = palette;
+                self.apply_theme();
+                self.rebuild_composited();
+                self.refresh_hint();
+            }
+            "help" => {
+                self.help_visible = !self.help_visible;
+                self.ui.set_help_visible(self.help_visible);
+            }
             "quit" => crate::quit_event_loop(),
             _ => {}
         }
@@ -648,6 +701,11 @@ impl Editor {
     fn on_key(&mut self, text: &str) {
         if self.typing_text {
             self.on_text_key(text);
+            return;
+        }
+        if text == "?" || text == "/" {
+            self.help_visible = !self.help_visible;
+            self.ui.set_help_visible(self.help_visible);
             return;
         }
 
@@ -868,6 +926,10 @@ impl Editor {
         match rx.try_recv() {
             Ok(regions) => {
                 self.ocr_rx = None;
+                let regions = pocshot_ocr::postprocess::filter_by_confidence(
+                    regions,
+                    self.ocr_confidence,
+                );
                 for region in &regions {
                     log::info!(
                         "ocr: {:.2} {:?}",
@@ -1066,6 +1128,8 @@ impl Editor {
             .set_active_color(self.palette.iter().position(|c| *c == self.color).unwrap_or(0) as i32);
         self.ui.set_stroke_width(self.width as i32);
         self.ui.set_text_size(self.text_size as i32);
+        self.ui
+            .set_ocr_confidence_value(format!("{:.2}", self.ocr_confidence).into());
         self.ui
             .set_copy_save_value(if self.copy_on_save { "on" } else { "off" }.into());
         self.ui

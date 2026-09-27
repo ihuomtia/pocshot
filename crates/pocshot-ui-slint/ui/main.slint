@@ -170,6 +170,10 @@ export component EditorWindow inherits Window {
     in property <string> snap-value: "on";
     in property <int> text-size: 24;
     in property <int> stroke-width: 3;
+    in property <string> ocr-confidence-value: "0.50";
+    // Help overlay.
+    in property <bool> help-visible: false;
+    in property <string> help-text: "";
 
     // phase: 0 = down, 1 = move, 2 = up. Coordinates are normalised 0..1.
     callback pointer(float, float, int);
@@ -308,6 +312,7 @@ export component EditorWindow inherits Window {
         Chip { label: "✕ sel"; chip-width: 62px; tooltip: "Reset the selection to the whole image"; clicked => { root.action("clear-selection"); } }
         Sep { }
         Chip { label: "⚙"; tooltip: "Settings"; active: root.settings-visible; clicked => { root.action("settings"); } }
+        Chip { label: "?"; tooltip: "Help (?)"; active: root.help-visible; clicked => { root.action("help"); } }
         Chip { label: "Quit"; chip-width: 54px; tooltip: "Close (Esc)"; clicked => { root.action("quit"); } }
     }
 
@@ -403,6 +408,42 @@ export component EditorWindow inherits Window {
                 spacing: 8px;
                 alignment: start;
                 Text {
+                    text: "OCR confidence";
+                    color: Theme.hint-text;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    width: 130px;
+                }
+                Chip { label: "−"; chip-width: 30px; clicked => { root.action("ocr-confidence-"); } }
+                Text {
+                    text: root.ocr-confidence-value;
+                    color: #ffffff;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    width: 44px;
+                    horizontal-alignment: center;
+                }
+                Chip { label: "+"; chip-width: 30px; clicked => { root.action("ocr-confidence+"); } }
+            }
+            HorizontalLayout {
+                height: 34px;
+                spacing: 8px;
+                alignment: start;
+                Text {
+                    text: "Theme";
+                    color: Theme.hint-text;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    width: 130px;
+                }
+                Chip { label: "Reload"; chip-width: 64px; tooltip: "Re-read config.json"; clicked => { root.action("reload-theme"); } }
+                Chip { label: "? Help"; chip-width: 64px; clicked => { root.action("help"); } }
+            }
+            HorizontalLayout {
+                height: 34px;
+                spacing: 8px;
+                alignment: start;
+                Text {
                     text: "Text size";
                     color: Theme.hint-text;
                     font-size: 13px;
@@ -420,6 +461,29 @@ export component EditorWindow inherits Window {
                 }
                 Chip { label: "+"; chip-width: 30px; clicked => { root.action("text-size+"); } }
             }
+        }
+    }
+
+    // Help overlay.
+    if (root.help-visible) : Rectangle {
+        x: root.width / 2 - 320px;
+        y: root.height / 2 - 90px;
+        width: 640px;
+        height: 180px;
+        background: #161616f2;
+        border-radius: 8px;
+        border-color: Theme.chip-border;
+        border-width: 1px;
+
+        Text {
+            x: 16px;
+            y: 12px;
+            width: parent.width - 32px;
+            height: parent.height - 24px;
+            text: root.help-text;
+            color: #ffffff;
+            font-size: 14px;
+            wrap: word-wrap;
         }
     }
 
