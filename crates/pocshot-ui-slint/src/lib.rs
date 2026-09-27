@@ -12,6 +12,7 @@ slint::include_modules!();
 
 mod editor;
 mod platform;
+mod snap;
 
 /// Capture the screen and open the editor on it.
 pub fn run() -> Result<()> {
@@ -23,21 +24,43 @@ pub fn run() -> Result<()> {
         image.height(),
         monitor.name
     );
-    show_editor(image)
+
+    let started = std::time::Instant::now();
+    let mut lines = pocshot_snap::detect_snap_lines(&image, &pocshot_snap::SnapConfig::default());
+    if let Ok(windows) = pocshot_core::list_windows() {
+        let window_lines = snap::window_snap_lines(
+            &windows,
+            monitor.x,
+            monitor.y,
+            image.width(),
+            image.height(),
+            std::process::id(),
+        );
+        lines.horizontal.extend(window_lines.horizontal);
+        lines.vertical.extend(window_lines.vertical);
+    }
+    log::info!(
+        "snap guides: {} horizontal, {} vertical ({} ms)",
+        lines.horizontal.len(),
+        lines.vertical.len(),
+        started.elapsed().as_millis()
+    );
+    show_editor(image, lines)
 }
 
 /// Open the editor on an image supplied by the caller (edit-clipboard flow).
 pub fn run_edit(image: RgbaImage) -> Result<()> {
-    show_editor(image)
+    let lines = pocshot_snap::detect_snap_lines(&image, &pocshot_snap::SnapConfig::default());
+    show_editor(image, lines)
 }
 
-fn show_editor(image: RgbaImage) -> Result<()> {
+fn show_editor(image: RgbaImage, snap_lines: pocshot_snap::SnapLines) -> Result<()> {
     let ui = EditorWindow::new().context("failed to create the Slint window")?;
     ui.set_shot(editor::to_slint_image(&image));
 
     // Keep the editor alive for as long as the event loop runs: the Slint
     // callbacks only hold a weak reference to it.
-    let editor = editor::Editor::new(ui, image);
+    let editor = editor::Editor::new(ui, image, snap_lines);
     editor.borrow().show().context("failed to show the window")?;
     slint::run_event_loop().context("Slint event loop failed")
 }

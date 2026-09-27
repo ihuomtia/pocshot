@@ -16,6 +16,7 @@ Tools (keyboard):
 - `E` eraser — click an annotation to remove it
 - `V` select — drag outside the selection to redraw it, drag inside to move it
 - `Ctrl+Z` undoes the last annotation or effect
+- Snapping to image/window edges is on by default; hold `Shift` to disable
 
 Colour: keys `1`–`6` pick from the palette.
 Stroke width: `[` decrease, `]` increase (1–24).

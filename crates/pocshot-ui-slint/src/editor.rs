@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use image::{imageops, RgbaImage};
 use pocshot_annotate::{effects, Color32, Pos2, Rect, Shape, ToolKind, Vec2};
+use pocshot_snap::SnapLines;
 use slint::{ComponentHandle as _, Image, Rgba8Pixel, SharedPixelBuffer};
 
 use crate::platform;
@@ -63,12 +64,14 @@ pub struct Editor {
     /// In-progress blur/pixelate region (image pixels).
     effect_anchor: Pos2,
     effect_rect: Option<Rect>,
+    snap_lines: SnapLines,
+    snap_enabled: bool,
 }
 
 const TEXT_SIZE: f32 = 24.0;
 
 impl Editor {
-    pub fn new(ui: EditorWindow, base: RgbaImage) -> Rc<RefCell<Self>> {
+    pub fn new(ui: EditorWindow, base: RgbaImage, snap_lines: SnapLines) -> Rc<RefCell<Self>> {
         let size = Vec2::new(base.width() as f32, base.height() as f32);
         let composited = base.clone();
         let editor = Rc::new(RefCell::new(Self {
@@ -92,6 +95,8 @@ impl Editor {
             history: Vec::new(),
             effect_anchor: Pos2::ZERO,
             effect_rect: None,
+            snap_lines,
+            snap_enabled: true,
         }));
 
         {
@@ -133,8 +138,25 @@ impl Editor {
 
     fn on_pointer(&mut self, nx: f32, ny: f32, phase: i32) {
         let size = self.size();
-        let pos = Pos2::new(nx.clamp(0.0, 1.0) * size.x, ny.clamp(0.0, 1.0) * size.y);
-        let (ctrl, _shift) = platform::query_modifiers();
+        let (ctrl, shift) = platform::query_modifiers();
+        let raw = Pos2::new(nx.clamp(0.0, 1.0) * size.x, ny.clamp(0.0, 1.0) * size.y);
+        // Snap to image/window edges unless Shift is held.
+        let pos = if self.snap_enabled && !shift {
+            Pos2::new(
+                crate::snap::snap_pos(
+                    raw.x,
+                    &self.snap_lines.vertical,
+                    crate::snap::SNAP_DISTANCE,
+                ),
+                crate::snap::snap_pos(
+                    raw.y,
+                    &self.snap_lines.horizontal,
+                    crate::snap::SNAP_DISTANCE,
+                ),
+            )
+        } else {
+            raw
+        };
 
         match phase {
             0 => {
