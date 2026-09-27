@@ -15,7 +15,7 @@ impl PocshotApp {
             snap_enabled: self.snap_enabled,
             show_snap_lines: self.show_snap_lines,
             ocr_region_only: self.ocr_region_only,
-            theme: self.theme.clone(),
+            theme: (*self.theme).clone(),
         }
     }
 

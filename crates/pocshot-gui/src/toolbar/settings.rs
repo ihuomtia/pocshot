@@ -24,6 +24,7 @@ pub fn show_settings_panel(
     reload_theme: &mut bool,
     download_models: &mut bool,
     text_size: &mut f32,
+    settings_changed: &mut bool,
     ui: &mut egui::Ui,
     box_rect: Rect,
 ) {
@@ -103,8 +104,8 @@ pub fn show_settings_panel(
             .color(c.accent),
     );
     ui.add_space(2.0);
-    ui.checkbox(ocr_enabled, "Enable text detection");
-    ui.checkbox(show_text_boxes, "Show text bounding boxes");
+    *settings_changed |= ui.checkbox(ocr_enabled, "Enable text detection").changed();
+    *settings_changed |= ui.checkbox(show_text_boxes, "Show text bounding boxes").changed();
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.label(
@@ -112,11 +113,13 @@ pub fn show_settings_panel(
                 .size(f.settings_label)
                 .color(c.text_muted),
         );
-        ui.add(
-            egui::DragValue::new(ocr_confidence)
-                .range(0.1..=0.95)
-                .speed(0.01),
-        );
+        *settings_changed |= ui
+            .add(
+                egui::DragValue::new(ocr_confidence)
+                    .range(0.1..=0.95)
+                    .speed(0.01),
+            )
+            .changed();
     });
     ui.add_space(2.0);
     ui.label(
@@ -124,11 +127,13 @@ pub fn show_settings_panel(
             .size(f.settings_label)
             .color(c.text_muted),
     );
-    ui.add(
-        egui::TextEdit::singleline(ocr_models_dir)
-            .hint_text("default: ~/.config/pocshot/models")
-            .desired_width(panel_content_width(ui, box_rect)),
-    );
+    *settings_changed |= ui
+        .add(
+            egui::TextEdit::singleline(ocr_models_dir)
+                .hint_text("default: ~/.config/pocshot/models")
+                .desired_width(panel_content_width(ui, box_rect)),
+        )
+        .changed();
     if ui
         .add(
             egui::Button::new(format!("{} Download models", icons::TRAY_ARROW_DOWN))
@@ -174,7 +179,9 @@ pub fn show_settings_panel(
                 .size(f.settings_label)
                 .color(c.text_muted),
         );
-        ui.add(egui::DragValue::new(text_size).range(8.0..=72.0).speed(0.5));
+        *settings_changed |= ui
+            .add(egui::DragValue::new(text_size).range(8.0..=72.0).speed(0.5))
+            .changed();
     });
 
     ui.add_space(8.0);
@@ -239,10 +246,10 @@ pub fn show_settings_panel(
             .color(c.accent),
     );
     ui.add_space(2.0);
-    ui.checkbox(show_snap_lines, "Show all snap lines");
-    ui.checkbox(snap_enabled, "Enable snapping");
-    ui.checkbox(show_ocr_debug, "Show OCR debug zones");
-    ui.checkbox(ocr_region_only, "Detect text only in selection");
+    *settings_changed |= ui.checkbox(show_snap_lines, "Show all snap lines").changed();
+    *settings_changed |= ui.checkbox(snap_enabled, "Enable snapping").changed();
+    *settings_changed |= ui.checkbox(show_ocr_debug, "Show OCR debug zones").changed();
+    *settings_changed |= ui.checkbox(ocr_region_only, "Detect text only in selection").changed();
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("Hold Shift to temporarily disable snapping")

@@ -258,8 +258,9 @@ struct PocshotApp {
     /// clipboard instead of recapturing.
     clipboard_mode: bool,
     /// Active visual theme (colors, font sizes, geometry). Loaded from config
-    /// at startup and swapped live on "Reload theme".
-    theme: crate::theme::Theme,
+    /// at startup and swapped live on "Reload theme". Wrapped in an Arc so the
+    /// per-frame clone handed to paint closures is a refcount bump.
+    theme: Arc<crate::theme::Theme>,
     /// Time of the previous frame, used to log frame timing for performance
     /// measurement (especially on software renderers).
     last_frame: Option<Instant>,
@@ -267,6 +268,10 @@ struct PocshotApp {
     snap_overlay_key: SnapOverlayKey,
     snap_lines_generation: u64,
     theme_generation: u64,
+    /// Cached layout for the status pill so the galley is rebuilt only when
+    /// the status text changes. Stored as an `Arc` because egui returns the
+    /// layout as `Arc<Galley>` and `Painter::galley` accepts the same.
+    status_galley: Option<(String, Arc<egui::Galley>)>,
 }
 
 impl PocshotApp {
@@ -317,12 +322,13 @@ impl PocshotApp {
             ocr_ready_region: None,
             capture_version: 0,
             clipboard_mode: matches!(source, AppSource::Clipboard(_)),
-            theme: settings.theme,
+            theme: Arc::new(settings.theme),
             last_frame: None,
             snap_overlay: None,
             snap_overlay_key: (0, 0, 0, false, false, 0),
             snap_lines_generation: 0,
             theme_generation: 0,
+            status_galley: None,
         };
         match source {
             AppSource::Screen => app.begin_capture(&cc.egui_ctx),
@@ -892,10 +898,11 @@ impl eframe::App for PocshotApp {
         self.refresh_snap_overlay(ctx);
 
         let snap_ok = self.snap_enabled && !ctx.input(|i| i.modifiers.shift);
-        let settings_before = self.to_settings();
+        let models_dir_before = self.ocr_models_dir.clone();
 
         // Clone the theme so the painting closures below can borrow it freely
         // while `self` is borrowed mutably (same pattern as `status`).
+        // The field is an Arc, so this is a cheap refcount bump.
         let theme = self.theme.clone();
         // Keep the annotation text size in sync with the themed default.
         self.annotations.text_size = theme.fonts.annotation_text;
@@ -1093,6 +1100,8 @@ impl eframe::App for PocshotApp {
                 let mut settings_rect = Rect::NOTHING;
                 let mut reload_theme = false;
                 let mut download_models = false;
+                let mut settings_changed = false;
+                let mut annotation_text_size = self.theme.fonts.annotation_text;
                 if self.show_settings {
                     let panel_w = 300.0_f32;
                     settings_rect = Rect::from_min_max(
@@ -1129,7 +1138,8 @@ impl eframe::App for PocshotApp {
                                         &mut self.ocr_models_dir,
                                         &mut reload_theme,
                                         &mut download_models,
-                                        &mut self.theme.fonts.annotation_text,
+                                        &mut annotation_text_size,
+                                        &mut settings_changed,
                                         ui,
                                         settings_rect,
                                     );
@@ -1137,10 +1147,33 @@ impl eframe::App for PocshotApp {
                         });
                 }
 
+                if annotation_text_size != self.theme.fonts.annotation_text {
+                    let mut new_theme = (*self.theme).clone();
+                    new_theme.fonts.annotation_text = annotation_text_size;
+                    self.theme = Arc::new(new_theme);
+                    self.annotations.text_size = annotation_text_size;
+                    // The widget already reported changed(), so settings_changed
+                    // is true and persist_settings will write the new theme.
+                }
+
+                if settings_changed {
+                    self.persist_settings();
+                }
+                if self.ocr_models_dir != models_dir_before {
+                    self.ocr_detector = None;
+                    self.ocr_regions.clear();
+                    self.ocr_raw_regions.clear();
+                    self.ocr_ready_version = 0;
+                    if self.capture.is_some() {
+                        let _ = self.run_ocr_detection(ctx, self.capture.clone().unwrap());
+                    }
+                }
+
                 if reload_theme {
                     let loaded = config::load();
-                    self.theme = loaded.theme;
+                    self.theme = Arc::new(loaded.theme);
                     self.theme_generation += 1;
+                    self.persist_settings();
                     self.status = "Theme reloaded".to_string();
                     ui.ctx().request_repaint();
                 }
@@ -1276,20 +1309,5 @@ impl eframe::App for PocshotApp {
                     self.draw_text_editor(ui, draw_rect, image_size);
                 }
             });
-
-        if settings_before != self.to_settings() {
-            self.persist_settings();
-            // Models-dir changed: drop the loaded engine so the next detection
-            // round re-reads from the new directory.
-            if settings_before.ocr_models_dir != self.ocr_models_dir {
-                self.ocr_detector = None;
-                self.ocr_regions.clear();
-                self.ocr_raw_regions.clear();
-                self.ocr_ready_version = 0;
-                if self.capture.is_some() {
-                    let _ = self.run_ocr_detection(ctx, self.capture.clone().unwrap());
-                }
-            }
-        }
     }
 }

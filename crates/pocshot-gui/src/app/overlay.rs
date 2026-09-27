@@ -115,18 +115,27 @@ impl PocshotApp {
     /// is an active capture so failures like "OCR failed: …" or transient
     /// messages are visible even with no region selected (the toolbar status is
     /// otherwise gated on a selection).
-    pub(crate) fn draw_status_line(&self, painter: &egui::Painter, draw_rect: Rect, status: &str) {
+    pub(crate) fn draw_status_line(
+        &mut self,
+        painter: &egui::Painter,
+        draw_rect: Rect,
+        status: &str,
+    ) {
         if status.is_empty() {
             return;
         }
+        if !self.status_galley.as_ref().is_some_and(|(s, _)| s == status) {
+            let layout_job = egui::text::LayoutJob::simple(
+                status.to_string(),
+                egui::FontId::proportional(self.theme.fonts.status),
+                self.theme.colors.text_muted,
+                f32::INFINITY,
+            );
+            let galley = painter.layout_job(layout_job);
+            self.status_galley = Some((status.to_string(), galley));
+        }
+        let galley = self.status_galley.as_ref().unwrap().1.clone(); // Arc clone, cheap
         let max_w = (draw_rect.width() - 16.0).max(40.0);
-        let layout_job = egui::text::LayoutJob::simple(
-            status.to_string(),
-            egui::FontId::proportional(self.theme.fonts.status),
-            self.theme.colors.text_muted,
-            f32::INFINITY,
-        );
-        let galley = painter.layout_job(layout_job);
         let g_w = galley.size().x.min(max_w);
         let g_h = galley.size().y;
         let margin = 8.0;
@@ -142,12 +151,6 @@ impl PocshotApp {
             egui::StrokeKind::Outside,
         );
         let text_pos = pos2(pill_min.x + 8.0, pill_min.y + (pill_h - g_h) / 2.0);
-        painter.text(
-            text_pos,
-            egui::Align2::LEFT_TOP,
-            status,
-            egui::FontId::proportional(self.theme.fonts.status),
-            self.theme.colors.text_muted,
-        );
+        painter.galley(text_pos, galley, self.theme.colors.text_muted);
     }
 }
