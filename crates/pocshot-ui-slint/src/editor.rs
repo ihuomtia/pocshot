@@ -396,6 +396,7 @@ impl Editor {
             "ocr" => self.toggle_ocr(),
             "copy" => self.copy_and_quit(),
             "save" => self.save_and_quit(),
+            "pin" => self.pin_and_quit(),
             "quit" => crate::quit_event_loop(),
             _ => {}
         }
@@ -786,6 +787,50 @@ impl Editor {
             None => log::warn!("empty selection, nothing copied"),
         }
         crate::quit_after_grace();
+    }
+
+    /// Save the selection to a temp PNG and spawn a pin window for it.
+    fn pin_and_quit(&self) {
+        let Some(image) = self.selected_image() else {
+            log::warn!("empty selection, nothing pinned");
+            return;
+        };
+        let path = std::env::temp_dir().join(format!("pocshot-pin-{}.png", std::process::id()));
+        if let Err(error) = image.save(&path) {
+            log::error!("failed to write pin image: {error}");
+            return;
+        }
+
+        let win = self.window_size();
+        let display = self.display_rect();
+        let origin = self.ui.window().position();
+        let scale_x = display.width() * win.x / self.size().x;
+        let scale_y = display.height() * win.y / self.size().y;
+        let x = origin.x + (display.min.x * win.x) as i32 + (self.selection.min.x * scale_x) as i32;
+        let y = origin.y + (display.min.y * win.y) as i32 + (self.selection.min.y * scale_y) as i32;
+        let width = (self.selection.width() * scale_x).max(1.0) as u32;
+        let height = (self.selection.height() * scale_y).max(1.0) as u32;
+
+        match std::env::current_exe() {
+            Ok(exe) => {
+                let mut cmd = std::process::Command::new(exe);
+                cmd.args(["--ui", "slint", "pin"])
+                    .arg(&path)
+                    .args([
+                        x.to_string(),
+                        y.to_string(),
+                        width.to_string(),
+                        height.to_string(),
+                    ]);
+                pocshot_core::quiet_io(&mut cmd);
+                pocshot_core::detach(&mut cmd);
+                if let Err(error) = cmd.spawn() {
+                    log::error!("failed to spawn pin process: {error}");
+                }
+            }
+            Err(error) => log::error!("cannot find own executable: {error}"),
+        }
+        crate::quit_event_loop();
     }
 
     fn save_and_quit(&self) {

@@ -169,6 +169,7 @@ export component EditorWindow inherits Window {
         Chip { label: "+"; clicked => { root.action("width+"); } }
         Chip { label: "↶"; clicked => { root.action("undo"); } }
         Chip { label: "OCR"; chip-width: 44px; clicked => { root.action("ocr"); } }
+        Chip { label: "Pin"; chip-width: 44px; clicked => { root.action("pin"); } }
         Chip { label: "Copy"; chip-width: 52px; clicked => { root.action("copy"); } }
         Chip { label: "Save"; chip-width: 52px; clicked => { root.action("save"); } }
         Chip { label: "Quit"; chip-width: 52px; clicked => { root.action("quit"); } }
@@ -197,6 +198,44 @@ export component EditorWindow inherits Window {
     keys := FocusScope {
         key-pressed(e) => {
             root.key(e.text);
+            accept
+        }
+    }
+}
+
+/// A pinned screenshot snippet: borderless, always-on-top, drag to move,
+/// right-click or Esc to close.
+export component PinWindow inherits Window {
+    in property <image> shot;
+    callback dismiss;
+
+    background: #000000;
+    no-frame: true;
+    always-on-top: true;
+    title: "Pocshot pin";
+
+    // Right-click closes; declared below the move area so left-drags reach it.
+    TouchArea {
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                root.dismiss();
+            }
+        }
+    }
+
+    WindowMoveArea { }
+
+    Image {
+        source: root.shot;
+        width: 100%;
+        height: 100%;
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if (e.text == "\u{1b}" || e.text == "q") {
+                root.dismiss();
+            }
             accept
         }
     }

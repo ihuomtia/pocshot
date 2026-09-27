@@ -76,6 +76,32 @@ pub fn set_software_renderer() {
     FORCE_SOFTWARE.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Show a pinned snippet in a small borderless, always-on-top window.
+pub fn run_pin(
+    image_path: std::path::PathBuf,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<()> {
+    init_backend().context("failed to select a Slint backend")?;
+    let image = image::open(&image_path)
+        .with_context(|| format!("failed to open {}", image_path.display()))?
+        .to_rgba8();
+    let _ = std::fs::remove_file(&image_path);
+
+    let ui = PinWindow::new().context("failed to create the pin window")?;
+    ui.set_shot(editor::to_slint_image(&image));
+    ui.window()
+        .set_position(slint::PhysicalPosition::new(x, y));
+    ui.window()
+        .set_size(slint::PhysicalSize::new(width.max(1), height.max(1)));
+    ui.on_dismiss(|| {
+        let _ = slint::quit_event_loop();
+    });
+    ui.run().context("pin event loop failed")
+}
+
 static FORCE_SOFTWARE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Pick a renderer, mirroring `POCSHOT_RENDERER` on the egui side: force

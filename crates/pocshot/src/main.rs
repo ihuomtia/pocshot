@@ -208,11 +208,21 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn pin(args: PinArgs, ui: Ui) -> anyhow::Result<()> {
-    if ui == Ui::Slint {
-        anyhow::bail!("the Slint UI does not implement `pin` yet; use --ui egui");
+    match ui {
+        Ui::Egui => pocshot_gui::run_pin(args.image, args.x, args.y, args.width, args.height)
+            .map_err(|e| anyhow::anyhow!("pin exited with error: {e}")),
+        Ui::Slint => slint_run_pin(args),
     }
-    pocshot_gui::run_pin(args.image, args.x, args.y, args.width, args.height)
-        .map_err(|e| anyhow::anyhow!("pin exited with error: {e}"))
+}
+
+#[cfg(feature = "ui-slint")]
+fn slint_run_pin(args: PinArgs) -> anyhow::Result<()> {
+    pocshot_ui_slint::run_pin(args.image, args.x, args.y, args.width, args.height)
+}
+
+#[cfg(not(feature = "ui-slint"))]
+fn slint_run_pin(_args: PinArgs) -> anyhow::Result<()> {
+    anyhow::bail!("this build has no Slint UI compiled in (enable the `ui-slint` feature)")
 }
 
 /// Log/notify on a UI startup error, then exit.
