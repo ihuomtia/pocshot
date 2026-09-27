@@ -68,6 +68,9 @@ pub struct Editor {
     effect_rect: Option<Rect>,
     snap_lines: SnapLines,
     snap_enabled: bool,
+    /// Active snap guide coordinates (image px) to draw while dragging.
+    snap_x: Option<f32>,
+    snap_y: Option<f32>,
     ocr_rx: Option<mpsc::Receiver<Vec<TextRegion>>>,
     ocr_regions: Vec<TextRegion>,
     /// Image-space origin of the crop the OCR regions are relative to.
@@ -125,6 +128,8 @@ impl Editor {
             effect_rect: None,
             snap_lines,
             snap_enabled: true,
+            snap_x: None,
+            snap_y: None,
             ocr_rx: None,
             ocr_regions: Vec::new(),
             ocr_origin: Pos2::ZERO,
@@ -293,19 +298,22 @@ impl Editor {
         self.refresh_layout();
         // Snap to image/window edges unless Shift is held.
         let pos = if self.snap_enabled && !shift {
-            Pos2::new(
-                crate::snap::snap_pos(
-                    raw.x,
-                    &self.snap_lines.vertical,
-                    crate::snap::SNAP_DISTANCE,
-                ),
-                crate::snap::snap_pos(
-                    raw.y,
-                    &self.snap_lines.horizontal,
-                    crate::snap::SNAP_DISTANCE,
-                ),
-            )
+            let snapped_x = crate::snap::snap_pos(
+                raw.x,
+                &self.snap_lines.vertical,
+                crate::snap::SNAP_DISTANCE,
+            );
+            let snapped_y = crate::snap::snap_pos(
+                raw.y,
+                &self.snap_lines.horizontal,
+                crate::snap::SNAP_DISTANCE,
+            );
+            self.snap_x = ((snapped_x - raw.x).abs() > 0.01).then_some(snapped_x);
+            self.snap_y = ((snapped_y - raw.y).abs() > 0.01).then_some(snapped_y);
+            Pos2::new(snapped_x, snapped_y)
         } else {
+            self.snap_x = None;
+            self.snap_y = None;
             raw
         };
 
@@ -709,6 +717,33 @@ impl Editor {
         let y1 = bbox.max.y.ceil().min(size.y) as u32;
         let mut image = imageops::crop_imm(&self.composited, x0, y0, x1 - x0, y1 - y0).to_image();
         shape.render(&mut image, self.color, self.width, Pos2::new(x0 as f32, y0 as f32));
+        // Show the guides the current position is snapping to.
+        let guide = Color32::from_rgb(255, 51, 102);
+        let (w, h) = ((x1 - x0) as f32, (y1 - y0) as f32);
+        if let Some(sx) = self.snap_x {
+            let gx = sx - x0 as f32;
+            if gx >= 0.0 && gx <= w {
+                pocshot_annotate::raster::draw_line_on_image(
+                    &mut image,
+                    Pos2::new(gx, 0.0),
+                    Pos2::new(gx, h),
+                    guide,
+                    1.0,
+                );
+            }
+        }
+        if let Some(sy) = self.snap_y {
+            let gy = sy - y0 as f32;
+            if gy >= 0.0 && gy <= h {
+                pocshot_annotate::raster::draw_line_on_image(
+                    &mut image,
+                    Pos2::new(0.0, gy),
+                    Pos2::new(w, gy),
+                    guide,
+                    1.0,
+                );
+            }
+        }
 
         self.publish_preview(image, x0, y0, x1, y1);
     }
