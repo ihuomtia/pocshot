@@ -51,6 +51,10 @@ pub struct Editor {
     selection: Rect,
     select_anchor: Pos2,
     selecting: bool,
+    /// Moving the existing selection (drag started inside it).
+    moving_selection: bool,
+    move_anchor: Pos2,
+    move_origin: Rect,
     counter: u32,
     /// True while a text annotation is being typed (key events go to the buffer).
     typing_text: bool,
@@ -80,6 +84,9 @@ impl Editor {
             selection: Rect::from_min_size(Pos2::ZERO, size),
             select_anchor: Pos2::ZERO,
             selecting: false,
+            moving_selection: false,
+            move_anchor: Pos2::ZERO,
+            move_origin: Rect::NOTHING,
             counter: 1,
             typing_text: false,
             history: Vec::new(),
@@ -133,9 +140,18 @@ impl Editor {
             0 => {
                 self.locked_angle = None;
                 if self.tool == ToolKind::Select {
-                    self.selecting = true;
-                    self.select_anchor = pos;
-                    self.selection = Rect::from_two_pos(pos, pos);
+                    if self.selection.contains(pos) {
+                        // Drag inside the existing selection moves it.
+                        self.moving_selection = true;
+                        self.move_anchor = pos;
+                        self.move_origin = self.selection;
+                    } else {
+                        self.selecting = true;
+                        self.select_anchor = pos;
+                        self.selection = Rect::from_two_pos(pos, pos);
+                    }
+                } else if self.tool == ToolKind::Eraser {
+                    self.erase_at(pos);
                 } else if self.tool == ToolKind::Counter {
                     self.current = Some(Shape::begin_counter(pos, self.counter));
                 } else if self.tool == ToolKind::Text {
@@ -149,7 +165,10 @@ impl Editor {
                 }
             }
             1 => {
-                if self.selecting {
+                if self.moving_selection {
+                    let delta = pos - self.move_anchor;
+                    self.selection = translate_clamped(self.move_origin, delta, self.image_rect());
+                } else if self.selecting {
                     self.selection = Rect::from_two_pos(self.select_anchor, pos);
                 } else if self.effect_rect.is_some() {
                     self.effect_rect = Some(Rect::from_two_pos(self.effect_anchor, pos));
@@ -158,7 +177,9 @@ impl Editor {
                 }
             }
             2 => {
-                if self.selecting {
+                if self.moving_selection {
+                    self.moving_selection = false;
+                } else if self.selecting {
                     self.selecting = false;
                     self.selection = self.selection.intersect(self.image_rect());
                 } else if let Some(rect) = self.effect_rect.take() {
@@ -237,6 +258,7 @@ impl Editor {
             "t" => self.set_tool(ToolKind::Text),
             "b" => self.set_tool(ToolKind::Blur),
             "m" => self.set_tool(ToolKind::Pixelate),
+            "e" => self.set_tool(ToolKind::Eraser),
             "[" => {
                 self.width = (self.width - 1.0).max(1.0);
                 self.refresh_hint();
@@ -312,6 +334,19 @@ impl Editor {
         HistoryEntry {
             base: self.base.clone(),
             annotations: self.annotations.clone(),
+        }
+    }
+
+    /// Remove the topmost committed annotation under `pos` (eraser).
+    fn erase_at(&mut self, pos: Pos2) {
+        let hit = self
+            .annotations
+            .iter()
+            .rposition(|annotation| annotation.shape.hit_test(pos, 6.0));
+        if let Some(index) = hit {
+            self.history.push(self.snapshot());
+            self.annotations.remove(index);
+            self.rebuild_composited();
         }
     }
 
@@ -419,7 +454,7 @@ impl Editor {
         }
         self.ui.set_hint(
             format!(
-                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · N counter · T text · B blur · M pixelate · V select · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
+                "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · N counter · T text · B blur · M pixelate · E eraser · V select · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc quit",
                 self.tool,
                 self.color_index(),
                 self.width
@@ -466,6 +501,19 @@ impl Editor {
         }
         crate::quit_event_loop();
     }
+}
+
+/// Translate `rect` by `delta`, clamping so it stays inside `bounds`.
+fn translate_clamped(rect: Rect, delta: Vec2, bounds: Rect) -> Rect {
+    let size = rect.size();
+    let mut min = rect.min + delta;
+    min.x = min
+        .x
+        .clamp(bounds.min.x, (bounds.max.x - size.x).max(bounds.min.x));
+    min.y = min
+        .y
+        .clamp(bounds.min.y, (bounds.max.y - size.y).max(bounds.min.y));
+    Rect::from_min_size(min, size)
 }
 
 /// Stamp every annotation onto `image`, offset by `offset` image pixels.
