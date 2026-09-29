@@ -90,6 +90,15 @@ pub struct Colors {
     /// Border/box stroke color for panels (settings, help, tooltip borders).
     #[serde(default = "hx::box_border", with = "serde_color")]
     pub box_border: Color32,
+    /// Card background for the settings/help/pin surfaces.
+    #[serde(default = "hx::panel_bg", with = "serde_color")]
+    pub panel_bg: Color32,
+    /// Border of card surfaces.
+    #[serde(default = "hx::panel_border", with = "serde_color")]
+    pub panel_border: Color32,
+    /// Switch/slider track when off.
+    #[serde(default = "hx::control_track", with = "serde_color")]
+    pub control_track: Color32,
 }
 
 impl Default for Colors {
@@ -134,6 +143,9 @@ impl Colors {
             counter_edge: hx::counter_edge(),
             color_swatches: hx::color_swatches(),
             box_border: hx::box_border(),
+            panel_bg: hx::panel_bg(),
+            panel_border: hx::panel_border(),
+            control_track: hx::control_track(),
         }
     }
 }
@@ -170,6 +182,14 @@ pub struct Fonts {
     pub settings_label: f32,
     #[serde(default)]
     pub settings_helper: f32,
+    #[serde(default)]
+    pub panel_title: f32,
+    #[serde(default)]
+    pub section: f32,
+    #[serde(default)]
+    pub row: f32,
+    #[serde(default)]
+    pub shortcut: f32,
 }
 
 impl Default for Fonts {
@@ -196,6 +216,10 @@ impl Fonts {
             settings_section: 12.0,
             settings_label: 11.0,
             settings_helper: 10.0,
+            panel_title: 15.0,
+            section: 12.0,
+            row: 13.0,
+            shortcut: 11.0,
         }
     }
 }
@@ -244,6 +268,21 @@ pub struct Geometry {
     pub snap_distance: f32,
     #[serde(default)]
     pub default_stroke_width: f32,
+    /// Lucide icon edge length in logical px.
+    #[serde(default)]
+    pub icon_size: f32,
+    /// Lucide stroke width (24px grid units).
+    #[serde(default)]
+    pub icon_stroke: f32,
+    /// Card corner radius.
+    #[serde(default)]
+    pub panel_radius: f32,
+    /// Switch/slider corner radius.
+    #[serde(default)]
+    pub control_radius: f32,
+    /// Toolbar inner padding.
+    #[serde(default)]
+    pub toolbar_padding: f32,
 }
 
 impl Default for Geometry {
@@ -276,6 +315,11 @@ impl Geometry {
             counter_bubble_radius: 18.0,
             snap_distance: 8.0,
             default_stroke_width: 3.0,
+            icon_size: 18.0,
+            icon_stroke: 1.75,
+            panel_radius: 12.0,
+            control_radius: 8.0,
+            toolbar_padding: 8.0,
         }
     }
 }
@@ -397,6 +441,15 @@ mod hx {
     }
     pub fn box_border() -> Color32 {
         Color32::from_rgb(70, 70, 70)
+    }
+    pub fn panel_bg() -> Color32 {
+        Color32::from_rgb(0x1b, 0x1b, 0x1f)
+    }
+    pub fn panel_border() -> Color32 {
+        Color32::from_rgb(0x3a, 0x3a, 0x42)
+    }
+    pub fn control_track() -> Color32 {
+        Color32::from_rgb(0x3a, 0x3a, 0x42)
     }
     pub fn color_swatches() -> Vec<Color32> {
         vec![
@@ -558,6 +611,33 @@ mod tests {
         let json = serde_json::to_string(&SerdeColorVecHolder(v.clone())).unwrap();
         let back = serde_json::from_str::<SerdeColorVecHolder>(&json).unwrap();
         assert_eq!(back.0, v);
+    }
+
+    #[test]
+    fn lucide_theme_fields_have_defaults_and_roundtrip() {
+        let t = Theme::builtin();
+        assert_eq!(t.geometry.icon_size, 18.0);
+        assert_eq!(t.geometry.icon_stroke, 1.75);
+        assert_eq!(t.geometry.panel_radius, 12.0);
+        assert_eq!(t.geometry.control_radius, 8.0);
+        assert_eq!(t.geometry.toolbar_padding, 8.0);
+        assert_eq!(t.fonts.panel_title, 15.0);
+        assert_eq!(t.fonts.section, 12.0);
+        assert_eq!(t.fonts.row, 13.0);
+        assert_eq!(t.fonts.shortcut, 11.0);
+        assert_eq!(color32_to_hex(&t.colors.panel_bg), "#1b1b1f");
+        assert_eq!(color32_to_hex(&t.colors.panel_border), "#3a3a42");
+        assert_eq!(color32_to_hex(&t.colors.control_track), "#3a3a42");
+
+        let json = serde_json::to_string(&t).unwrap();
+        let back: Theme = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back);
+
+        // A legacy theme JSON missing the new keys still loads with defaults.
+        let legacy = r##"{ "colors": { "accent": "#00ff00" } }"##;
+        let partial: Theme = serde_json::from_str(legacy).unwrap();
+        assert_eq!(partial.geometry.icon_size, 18.0);
+        assert_eq!(partial.colors.panel_border, Theme::builtin().colors.panel_border);
     }
 
     #[derive(serde::Serialize, serde::Deserialize)]
