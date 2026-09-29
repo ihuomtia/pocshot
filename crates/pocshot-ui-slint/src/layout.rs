@@ -28,19 +28,51 @@ pub struct ToolbarLayout {
     pub tooltips_below: bool,
 }
 
-fn row_width(spec: &ToolbarSpec, buttons: usize, swatches: usize) -> f32 {
-    let n = buttons as f32;
-    let s = swatches as f32;
-    if n == 0.0 && s == 0.0 {
-        return 0.0;
-    }
-    // buttons + swatches + three separators + the width-stepper allowance.
-    n * spec.button
-        + (n - 1.0).max(0.0) * spec.button_gap
-        + s * spec.swatch
-        + (s - 1.0).max(0.0) * spec.swatch_gap
-        + 3.0 * (spec.sep_w + 2.0 * spec.button_gap)
-        + 2.0 * (spec.button - spec.swatch)
+const OUTER_GAP: f32 = 6.0;
+const STEPPER_BTN: f32 = 28.0;
+const TEXT_W: f32 = 30.0;
+
+/// A horizontal group of `n` buttons with the inner gap.
+fn button_group(n: usize, spec: &ToolbarSpec) -> f32 {
+    let n = n as f32;
+    n * spec.button + (n - 1.0).max(0.0) * spec.button_gap
+}
+
+/// `OptionControls`: colour swatches, a separator, then `Minus value Plus`.
+fn option_group(spec: &ToolbarSpec) -> f32 {
+    let swatches = spec.n_swatches as f32;
+    let swatch_w = swatches * spec.swatch;
+    let swatch_gaps = (swatches - 1.0).max(0.0) * spec.swatch_gap;
+    // Between the swatches and each of Sep, Minus, value Text, Plus.
+    swatch_w
+        + spec.sep_w
+        + 2.0 * STEPPER_BTN
+        + TEXT_W
+        + swatch_gaps
+        + 4.0 * spec.button_gap
+}
+
+/// Content width of the single-row toolbar (matches `main.slint`).
+fn single_row_width(spec: &ToolbarSpec) -> f32 {
+    button_group(spec.n_actions, spec)
+        + OUTER_GAP
+        + spec.sep_w
+        + OUTER_GAP
+        + button_group(spec.n_tools, spec)
+        + OUTER_GAP
+        + spec.sep_w
+        + OUTER_GAP
+        + option_group(spec)
+}
+
+/// Content width of the wrapped first row (actions + separator + options).
+fn wrapped_top_width(spec: &ToolbarSpec) -> f32 {
+    button_group(spec.n_actions, spec) + OUTER_GAP + spec.sep_w + OUTER_GAP + option_group(spec)
+}
+
+/// Content width of the wrapped second row (tools).
+fn wrapped_bottom_width(spec: &ToolbarSpec) -> f32 {
+    button_group(spec.n_tools, spec)
 }
 
 /// Compute the toolbar rect. `sel` is (min_x, min_y, width, height) in window
@@ -50,18 +82,12 @@ pub fn toolbar_layout(win: (f32, f32), sel: (f32, f32, f32, f32), spec: &Toolbar
     let (sx, sy, sw, sh) = sel;
     let sel_bottom = sy + sh;
 
-    let single = row_width(spec, spec.n_actions + spec.n_tools, spec.n_swatches) + 2.0 * spec.pad;
-    let action_row = row_width(spec, spec.n_actions, spec.n_swatches) + 2.0 * spec.pad;
-    let tool_row = row_width(spec, spec.n_tools, 0) + 2.0 * spec.pad;
+    let single = single_row_width(spec) + 2.0 * spec.pad;
+    let wrapped_width = wrapped_top_width(spec).max(wrapped_bottom_width(spec)) + 2.0 * spec.pad;
 
     let wrapped = single + 2.0 * spec.margin > win_w;
     let avail = (win_w - 2.0 * spec.margin).max(1.0);
-    let width = (if wrapped {
-        action_row.max(tool_row)
-    } else {
-        single
-    })
-    .min(avail);
+    let width = (if wrapped { wrapped_width } else { single }).min(avail);
     let height = if wrapped { 2.0 * spec.row_h + 2.0 * spec.pad } else { spec.row_h };
 
     // Centre horizontally on the selection.
@@ -165,5 +191,23 @@ mod tests {
         let l = toolbar_layout((1920.0, 1080.0), (800.0, 400.0, 320.0, 200.0), &spec());
         assert!(l.width > 600.0);
         assert!(!l.wrapped);
+    }
+
+    #[test]
+    fn single_row_width_matches_slint_layout() {
+        // Golden: 12 actions (32 + gap 4) + Sep + 16 tools + Sep + options,
+        // joined by 6px outer gaps, plus 2*8px padding.
+        let l = toolbar_layout((1920.0, 1080.0), (0.0, 0.0, 100.0, 100.0), &spec());
+        assert!(!l.wrapped);
+        assert_eq!(l.width, 1321.0, "single-row width drifted from the Slint layout");
+    }
+
+    #[test]
+    fn wrapped_row_width_matches_slint_layout() {
+        // Golden: actions + Sep + options on one row (tools are the shorter
+        // second row), plus 2*8px padding.
+        let l = toolbar_layout((800.0, 900.0), (0.0, 100.0, 100.0, 100.0), &spec());
+        assert!(l.wrapped);
+        assert_eq!(l.width, 736.0, "wrapped width drifted from the Slint layout");
     }
 }

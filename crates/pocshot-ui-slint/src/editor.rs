@@ -401,6 +401,9 @@ impl Editor {
         theme.set_row_font(f.row);
         theme.set_section_font(f.section);
         theme.set_shortcut_font(f.shortcut);
+        theme.set_panel_title_font(f.panel_title);
+        theme.set_panel_radius(g.panel_radius);
+        theme.set_control_radius(g.control_radius);
     }
 
     /// Write the current settings back to disk (best effort).
@@ -639,9 +642,34 @@ impl Editor {
     }
 
     fn on_action(&mut self, action: &str) {
-        if let Some(v) = action.strip_prefix("width-set:") {
+        // Live slider feedback: update state + the readout, but never persist.
+        if let Some(v) = action.strip_prefix("width-live:") {
             if let Ok(v) = v.parse::<f32>() {
                 self.width = v.clamp(1.0, 24.0);
+                self.ui.set_stroke_width(self.width as i32);
+            }
+            return;
+        }
+        if let Some(v) = action.strip_prefix("text-size-live:") {
+            if let Ok(v) = v.parse::<f32>() {
+                self.text_size = v.clamp(8.0, 72.0);
+                self.ui.set_text_size(self.text_size as i32);
+            }
+            return;
+        }
+        if let Some(v) = action.strip_prefix("ocr-confidence-live:") {
+            if let Ok(v) = v.parse::<f32>() {
+                self.ocr_confidence = v.clamp(0.1, 0.95);
+                self.ui.set_ocr_confidence(self.ocr_confidence);
+                self.ui
+                    .set_ocr_confidence_value(format!("{:.2}", self.ocr_confidence).into());
+            }
+            return;
+        }
+        // Committed slider values: persist once, on release.
+        if let Some(v) = action.strip_prefix("width-set:") {
+            if let Ok(v) = v.parse::<f32>() {
+                self.width = v.round().clamp(1.0, 24.0);
                 self.settings.annotation_stroke_width = self.width;
                 self.persist_settings();
                 self.refresh_chrome();
@@ -650,7 +678,7 @@ impl Editor {
         }
         if let Some(v) = action.strip_prefix("text-size-set:") {
             if let Ok(v) = v.parse::<f32>() {
-                self.text_size = v.clamp(8.0, 72.0);
+                self.text_size = v.round().clamp(8.0, 72.0);
                 self.settings.theme.fonts.annotation_text = self.text_size;
                 self.persist_settings();
                 self.refresh_chrome();
@@ -703,6 +731,7 @@ impl Editor {
                     self.checkpoint();
                     self.annotations.clear();
                     self.rebuild_composited();
+                    self.refresh_chrome();
                 }
             }
             "clear-selection" => {
@@ -1190,6 +1219,7 @@ impl Editor {
             let current = self.snapshot();
             self.redo_stack.push(current);
             self.restore(entry);
+            self.refresh_chrome();
         }
     }
 
@@ -1198,6 +1228,7 @@ impl Editor {
             let current = self.snapshot();
             self.history.push(current);
             self.restore(entry);
+            self.refresh_chrome();
         }
     }
 

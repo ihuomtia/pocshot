@@ -61,7 +61,7 @@ export component IconButton inherits Rectangle {
 
     width: root.button-width;
     height: 32px;
-    border-radius: 8px;
+    border-radius: Theme.control-radius * 1px;
     background: !root.enabled ? Theme.control-track
         : root.active ? Theme.accent
         : ta.has-hover ? Theme.chip-hover
@@ -138,7 +138,10 @@ export component ValueSlider inherits Rectangle {
     in property <float> value: 0;
     in property <float> min: 0;
     in property <float> max: 1;
+    /// Emitted continuously while dragging (live feedback).
     callback changed(float);
+    /// Emitted on pointer release; the value to persist.
+    callback committed(float);
 
     height: 24px;
     border-radius: 4px;
@@ -170,6 +173,9 @@ export component ValueSlider inherits Rectangle {
             if (e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && ta.pressed)) {
                 root.changed(root.min + ta.mouse-x / root.width * (root.max - root.min));
             }
+            if (e.kind == PointerEventKind.up) {
+                root.committed(root.min + ta.mouse-x / root.width * (root.max - root.min));
+            }
         }
     }
 }
@@ -182,7 +188,7 @@ export component Swatch inherits Rectangle {
 
     width: 26px;
     height: 26px;
-    border-radius: 6px;
+    border-radius: Theme.control-radius * 1px;
     background: root.fill;
     border-color: root.active ? #ffffff : (ta.has-hover ? #9a9a9a : transparent);
     border-width: root.active ? 2px : 1px;

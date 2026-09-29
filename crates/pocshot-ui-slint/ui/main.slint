@@ -326,9 +326,9 @@ export component EditorWindow inherits Window {
                 height: 32px;
                 spacing: 6px;
                 alignment: start;
-                ActionButtons { can-undo: root.can-undo; can-redo: root.can-redo; settings-visible: root.settings-visible; help-visible: root.help-visible; tips-below: true; action(a) => { root.action(a); } }
+                ActionButtons { can-undo: root.can-undo; can-redo: root.can-redo; settings-visible: root.settings-visible; help-visible: root.help-visible; tips-below: false; action(a) => { root.action(a); } }
                 Sep { }
-                OptionControls { active-color: root.active-color; stroke-width: root.stroke-width; tips-below: true; pick-color(i) => { root.pick-color(i); } action(a) => { root.action(a); } }
+                OptionControls { active-color: root.active-color; stroke-width: root.stroke-width; tips-below: false; pick-color(i) => { root.pick-color(i); } action(a) => { root.action(a); } }
             }
             HorizontalLayout {
                 height: 32px;
@@ -341,12 +341,12 @@ export component EditorWindow inherits Window {
 
     // Settings panel.
     if (root.settings-visible) : Rectangle {
-        x: root.width - 328px;
-        y: root.height - 520px;
-        width: 316px;
-        height: 500px;
+        width: Math.max(0px, Math.min(316px, root.width - 24px));
+        height: Math.max(0px, Math.min(500px, root.height - 24px));
+        x: Math.max(12px, root.width - self.width - 12px);
+        y: Math.max(12px, root.height - self.height - 12px);
         background: Theme.panel-bg;
-        border-radius: 14px;
+        border-radius: Theme.panel-radius * 1px;
         border-color: Theme.panel-border;
         border-width: 1px;
 
@@ -357,7 +357,7 @@ export component EditorWindow inherits Window {
             spacing: 8px;
             alignment: start;
             IconDisplay { icon: Icons.Settings; size: 16px; stroke: #ffffff; }
-            Text { text: "Settings"; color: #ffffff; font-size: 15px; vertical-alignment: center; }
+            Text { text: "Settings"; color: #ffffff; font-size: Theme.panel-title-font * 1px; vertical-alignment: center; }
         }
         IconButton {
             x: parent.width - 44px;
@@ -401,7 +401,8 @@ export component EditorWindow inherits Window {
                         min: 0.10;
                         max: 0.95;
                         value: root.ocr-confidence;
-                        changed(v) => { root.action("ocr-confidence-set:" + v); }
+                        changed(v) => { root.action("ocr-confidence-live:" + v); }
+                        committed(v) => { root.action("ocr-confidence-set:" + v); }
                     }
                     Text { text: root.ocr-confidence-value; color: #ffffff; font-size: 13px; width: 40px; horizontal-alignment: center; vertical-alignment: center; }
                 }
@@ -412,14 +413,14 @@ export component EditorWindow inherits Window {
                     spacing: 8px;
                     alignment: start;
                     Text { text: "Stroke width"; color: Theme.hint-text; font-size: 13px; width: 150px; vertical-alignment: center; }
-                    ValueSlider { width: 80px; height: 24px; min: 1; max: 24; value: root.stroke-width; changed(v) => { root.action("width-set:" + v); } }
+                    ValueSlider { width: 80px; height: 24px; min: 1; max: 24; value: root.stroke-width; changed(v) => { root.action("width-live:" + v); } committed(v) => { root.action("width-set:" + v); } }
                 }
                 HorizontalLayout {
                     height: 28px;
                     spacing: 8px;
                     alignment: start;
                     Text { text: "Text size"; color: Theme.hint-text; font-size: 13px; width: 150px; vertical-alignment: center; }
-                    ValueSlider { width: 80px; height: 24px; min: 8; max: 72; value: root.text-size; changed(v) => { root.action("text-size-set:" + v); } }
+                    ValueSlider { width: 80px; height: 24px; min: 8; max: 72; value: root.text-size; changed(v) => { root.action("text-size-live:" + v); } committed(v) => { root.action("text-size-set:" + v); } }
                 }
                 HorizontalLayout {
                     height: 32px;
@@ -456,12 +457,12 @@ export component EditorWindow inherits Window {
     }
 
     if (root.help-visible) : Rectangle {
-        x: root.width / 2 - 340px;
-        y: root.height / 2 - 260px;
-        width: 680px;
-        height: 520px;
+        width: Math.max(0px, Math.min(680px, root.width - 24px));
+        height: Math.max(0px, Math.min(520px, root.height - 24px));
+        x: Math.max(12px, (root.width - self.width) / 2);
+        y: Math.max(12px, (root.height - self.height) / 2);
         background: Theme.panel-bg;
-        border-radius: 14px;
+        border-radius: Theme.panel-radius * 1px;
         border-color: Theme.panel-border;
         border-width: 1px;
 
@@ -470,7 +471,7 @@ export component EditorWindow inherits Window {
             y: 16px;
             text: "Shortcuts";
             color: #ffffff;
-            font-size: 15px;
+            font-size: Theme.panel-title-font * 1px;
         }
         IconButton {
             x: parent.width - 44px;
@@ -556,7 +557,7 @@ export component EditorWindow inherits Window {
                 height: 100%;
                 text: chip;
                 color: Theme.hint-text;
-                font-size: 11px;
+                font-size: Theme.shortcut-font * 1px;
                 vertical-alignment: center;
             }
         }
