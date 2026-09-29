@@ -11,6 +11,7 @@ use image::RgbaImage;
 slint::include_modules!();
 
 mod editor;
+mod layout;
 mod platform;
 mod snap;
 
