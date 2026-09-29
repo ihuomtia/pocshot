@@ -13,10 +13,10 @@ use pocshot_annotate::{
 };
 use pocshot_ocr::TextRegion;
 use pocshot_snap::SnapLines;
-use slint::{ComponentHandle as _, Image, Rgba8Pixel, SharedPixelBuffer};
+use slint::{ComponentHandle as _, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 use crate::platform;
-use crate::{EditorWindow, Theme};
+use crate::{EditorWindow, HelpRow, Theme};
 
 /// Annotation colour presets (keys 1..6).
 const PALETTE: [Color32; 6] = [
@@ -109,13 +109,56 @@ pub struct Editor {
 const TEXT_BORDER_PADDING: f32 = 6.0;
 /// Redact boxes only pad vertically by one pixel.
 const REDACT_VERTICAL_PADDING: f32 = 1.0;
-/// Shortcut reference shown by the help overlay (?, /).
-const HELP_TEXT: &str = "\
-Tools: V select · R rect · Shift+R filled · L line · A arrow · C circle · Shift+C filled
-P pen · H highlighter · D redact · G text border · N counter · T text · B blur · M pixelate · E eraser
-Colors: 1-6 · Stroke width: [ and ] · Ctrl while dragging: square / circle / 45 degrees
-Enter or Ctrl+C copy · Ctrl+S save · Ctrl+Z undo · Ctrl+Shift+Z redo · O OCR
-Shift disables snapping · Esc clears the selection, then quits · ? toggles this help";
+/// Shortcut reference shown by the help overlay.
+pub(crate) fn help_rows() -> Vec<HelpRow> {
+    let row = |keys: &str, text: &str| HelpRow {
+        keys: keys.into(),
+        text: text.into(),
+    };
+    vec![
+        row("V", "Select — drag to select, drag inside to move"),
+        row("R / Shift+R", "Rectangle / filled rectangle"),
+        row("L / A", "Line / arrow"),
+        row("C / Shift+C", "Circle / filled circle"),
+        row("P / H", "Pen / highlighter"),
+        row("D / G", "Redact / text border (needs OCR)"),
+        row("N / T", "Counter / text"),
+        row("B / M", "Blur / pixelate"),
+        row("E", "Eraser — click an annotation"),
+        row("1–6", "Choose a colour"),
+        row("[ / ]", "Stroke width"),
+        row("Ctrl+drag", "Constrain to square / circle / 45°"),
+        row("Enter / Ctrl+C", "Copy selection"),
+        row("Ctrl+S", "Save selection"),
+        row("Ctrl+Z / Ctrl+Shift+Z", "Undo / redo"),
+        row("O", "OCR the selection"),
+        row("Shift", "Temporarily disable snapping"),
+        row("?", "Toggle this help"),
+        row("Esc", "Clear selection, then quit"),
+    ]
+}
+
+/// Human-readable name for the hint bar.
+fn tool_label(tool: ToolKind) -> &'static str {
+    match tool {
+        ToolKind::Select => "Select — drag to select, drag inside to move",
+        ToolKind::Rectangle => "Rectangle",
+        ToolKind::FilledRectangle => "Filled rectangle",
+        ToolKind::Line => "Line",
+        ToolKind::Arrow => "Arrow",
+        ToolKind::Circle => "Circle",
+        ToolKind::FilledCircle => "Filled circle",
+        ToolKind::Pen => "Pen",
+        ToolKind::Highlighter => "Highlighter",
+        ToolKind::Redact => "Redact",
+        ToolKind::Counter => "Counter",
+        ToolKind::Text => "Text",
+        ToolKind::Blur => "Blur",
+        ToolKind::Pixelate => "Pixelate",
+        ToolKind::Eraser => "Eraser",
+        ToolKind::HighlightText => "Text border",
+    }
+}
 
 /// Convert an `ecolor::Color32` to a Slint colour.
 fn to_slint_color(color: Color32) -> slint::Color {
@@ -309,7 +352,13 @@ impl Editor {
         editor.borrow().refresh_preview();
         editor.borrow().refresh_chrome();
         editor.borrow().apply_theme();
-        editor.borrow().ui.set_help_text(HELP_TEXT.into());
+        editor.borrow().ui.set_help_rows(ModelRc::from(std::rc::Rc::new(
+            VecModel::from(help_rows()),
+        )));
+        editor
+            .borrow()
+            .ui
+            .set_hint_primary("Drag to select a region".into());
         if editor.borrow().settings.ocr_enabled {
             editor.borrow_mut().toggle_ocr();
         }
@@ -1251,30 +1300,23 @@ impl Editor {
             if self.settings.ocr_enabled { "on" } else { "off" }.into(),
         );
         if self.typing_text {
-            self.ui.set_hint(
-                "Type text · Enter commit · Esc cancel · Backspace delete".into(),
-            );
+            self.ui
+                .set_status("Type text · Enter commit · Esc cancel".into());
+            self.ui.set_hint_chips(ModelRc::from(std::rc::Rc::new(VecModel::from(vec![
+                SharedString::from("Backspace Delete"),
+            ]))));
             return;
         }
-        let normal = format!(
-            "{:?} · color {} · width {:.0} · R rect · Shift+R fill · L line · A arrow · C circle · P pen · H highlight · D redact · G highlight-text · N counter · T text · B blur · M pixelate · E eraser · V select · O OCR · Ctrl+Z undo · Enter copy · Ctrl+S save · Esc clear or quit",
-            self.tool,
-            self.color_index(),
-            self.width
-        );
-        let hint = match &self.status {
-            Some(status) => format!("{status}  ·  {normal}"),
-            None => normal,
-        };
-        self.ui.set_hint(hint.into());
-    }
-
-    fn color_index(&self) -> usize {
-        self.palette
-            .iter()
-            .position(|c| *c == self.color)
-            .map(|i| i + 1)
-            .unwrap_or(0)
+        self.ui.set_status(match &self.status {
+            Some(status) => SharedString::from(status.as_str()),
+            None => SharedString::from(tool_label(self.tool)),
+        });
+        self.ui.set_hint_chips(ModelRc::from(std::rc::Rc::new(VecModel::from(vec![
+            SharedString::from("Enter Copy"),
+            SharedString::from("Ctrl+S Save"),
+            SharedString::from("Ctrl+Z Undo"),
+            SharedString::from("Esc Cancel"),
+        ]))));
     }
 
     fn tool_index(&self) -> i32 {
@@ -1430,6 +1472,21 @@ pub fn to_slint_image(image: &RgbaImage) -> Image {
 mod tests {
     use super::*;
     use pocshot_annotate::ToolKind;
+
+    #[test]
+    fn help_rows_cover_the_three_sections() {
+        let rows = help_rows();
+        assert!(rows.len() >= 10);
+        let joined = rows
+            .iter()
+            .map(|r| r.text.as_str())
+            .collect::<Vec<_>>()
+            .join("|");
+        assert!(joined.contains("Select"));
+        assert!(joined.contains("Undo"));
+        assert!(joined.to_lowercase().contains("copy"));
+        assert!(rows.iter().all(|r| !r.keys.is_empty() && !r.text.is_empty()));
+    }
 
     fn gradient(width: u32, height: u32) -> RgbaImage {
         RgbaImage::from_fn(width, height, |x, y| {

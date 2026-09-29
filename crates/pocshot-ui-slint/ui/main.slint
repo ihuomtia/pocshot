@@ -216,7 +216,10 @@ export component EditorWindow inherits Window {
     in property <float> sel-nh;
     in property <bool> sel-visible;
     in property <bool> sel-handles-visible: false;
-    in property <string> hint;
+    // Hint bar: a status/tool line plus contextual shortcut chips.
+    in property <string> status: "";
+    in property <string> hint-primary: "";
+    in property <[string]> hint-chips;
     in property <int> active-tool: 0;
     in property <int> active-color: 0;
     // Fall back to fullscreen when no explicit placement is known.
@@ -232,7 +235,7 @@ export component EditorWindow inherits Window {
     in property <string> ocr-confidence-value: "0.50";
     // Help overlay.
     in property <bool> help-visible: false;
-    in property <string> help-text: "";
+    in property <[HelpRow]> help-rows;
     // Toolbar placement (window pixels), computed in Rust to follow the
     // selection like the egui toolbar does.
     in property <length> toolbar-x: 8px;
@@ -515,47 +518,121 @@ export component EditorWindow inherits Window {
         }
     }
 
-    // Help overlay.
+    // Help overlay: click-outside catcher, then the card.
     if (root.help-visible) : Rectangle {
-        x: root.width / 2 - 320px;
-        y: root.height / 2 - 90px;
-        width: 640px;
-        height: 180px;
-        background: #161616f2;
-        border-radius: 8px;
-        border-color: Theme.chip-border;
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        TouchArea { clicked => { root.action("help"); } }
+    }
+
+    if (root.help-visible) : Rectangle {
+        x: root.width / 2 - 340px;
+        y: root.height / 2 - 260px;
+        width: 680px;
+        height: 520px;
+        background: Theme.panel-bg;
+        border-radius: 14px;
+        border-color: Theme.panel-border;
         border-width: 1px;
 
         Text {
-            x: 16px;
-            y: 12px;
-            width: parent.width - 32px;
-            height: parent.height - 24px;
-            text: root.help-text;
+            x: 20px;
+            y: 16px;
+            text: "Shortcuts";
             color: #ffffff;
-            font-size: 14px;
-            wrap: word-wrap;
+            font-size: 15px;
+        }
+        IconButton {
+            x: parent.width - 44px;
+            y: 12px;
+            icon: Icons.X;
+            tooltip: "Close";
+            button-width: 28px;
+            tooltip-below: true;
+            clicked => { root.action("help"); }
+        }
+        Flickable {
+            x: 20px;
+            y: 52px;
+            width: parent.width - 40px;
+            height: parent.height - 68px;
+            content-width: self.width;
+            content-height: help-list.preferred-height;
+            help-list := VerticalLayout {
+                width: 100%;
+                spacing: 6px;
+                alignment: start;
+                for row in root.help-rows: HorizontalLayout {
+                    width: 100%;
+                    height: row-text.preferred-height;
+                    spacing: 12px;
+                    alignment: start;
+                    Text {
+                        width: 160px;
+                        text: row.keys;
+                        color: Theme.accent;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    row-text := Text {
+                        width: 100%;
+                        text: row.text;
+                        color: Theme.hint-text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                }
+            }
         }
     }
 
-    // Hint line.
+    // Hint bar: status on the left, contextual shortcut chips on the right.
     Rectangle {
         x: 0;
-        y: root.height - 28px;
+        y: root.height - 30px;
         width: 100%;
-        height: 28px;
-        background: #000000a0;
+        height: 30px;
+        background: Theme.toolbar-bg;
     }
 
     Text {
         x: 12px;
-        y: root.height - 28px;
-        width: root.width - 24px;
-        height: 28px;
+        y: root.height - 30px;
+        height: 30px;
+        width: 55%;
         vertical-alignment: center;
         color: Theme.hint-text;
         font-size: 13px;
-        text: root.hint;
+        text: root.status == "" ? root.hint-primary : root.status;
+        overflow: elide;
+    }
+
+    HorizontalLayout {
+        x: root.width - 320px;
+        y: root.height - 30px;
+        width: 308px;
+        height: 30px;
+        spacing: 6px;
+        alignment: end;
+        for chip in root.hint-chips: Rectangle {
+            height: 20px;
+            width: chip-text.preferred-width + 14px;
+            border-radius: 5px;
+            background: Theme.chip-bg;
+            chip-text := Text {
+                x: 7px;
+                width: 100%;
+                height: 100%;
+                text: chip;
+                color: Theme.hint-text;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
     }
 
     keys := FocusScope {
