@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-29
 **Branch:** `slint-ui`
-**Status:** Approved design, awaiting spec review
+**Status:** Approved. Implementation plan: `docs/superpowers/plans/2026-09-29-lucide-native-slint-ui.md`
 
 ## Problem
 
