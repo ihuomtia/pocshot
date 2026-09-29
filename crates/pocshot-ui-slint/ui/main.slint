@@ -3,25 +3,10 @@
 //! selection rectangle and the toolbar, and forwards events to Rust. All
 //! editing logic lives in `lib.rs`/`editor.rs`.
 
-export global Theme {
-    in-out property <color> accent: #3a7bd5;
-    in-out property <color> chip-bg: #262626;
-    in-out property <color> chip-hover: #3a3a3a;
-    in-out property <color> chip-border: #3d3d3d;
-    in-out property <color> toolbar-bg: #000000d8;
-    in-out property <color> hint-text: #ffffffdd;
-    in-out property <color> dim: #00000066;
-    in-out property <color> sel-border: #ff3366;
-    in-out property <color> handle: #ffffff;
-    in-out property <color> canvas-bg: #101010;
-    in-out property <color> tooltip-bg: #111111e6;
-    in-out property <color> swatch0: #ff3b30;
-    in-out property <color> swatch1: #ff9500;
-    in-out property <color> swatch2: #ffd60a;
-    in-out property <color> swatch3: #34c759;
-    in-out property <color> swatch4: #0a84ff;
-    in-out property <color> swatch5: #ff2d95;
-}
+import { Icons } from "icons.slint";
+import { IconButton, Swatch } from "controls.slint";
+import { Theme } from "theme.slint";
+export { Theme }
 
 component Sep inherits Rectangle {
     width: 1px;
@@ -541,8 +526,9 @@ export component EditorWindow inherits Window {
 export component PinWindow inherits Window {
     in property <image> shot;
     callback dismiss;
+    callback resize(length, length);
 
-    background: #000000;
+    background: Theme.canvas-bg;
     no-frame: true;
     always-on-top: true;
     title: "Pocshot pin";
@@ -562,6 +548,43 @@ export component PinWindow inherits Window {
         source: root.shot;
         width: 100%;
         height: 100%;
+    }
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        border-color: Theme.panel-border;
+        border-width: 1px;
+    }
+
+    // Declared last so they sit above the move area and receive clicks.
+    close := IconButton {
+        x: root.width - 34px;
+        y: 6px;
+        icon: Icons.X;
+        tooltip: "Close";
+        button-width: 28px;
+        tooltip-below: true;
+        clicked => { root.dismiss(); }
+    }
+
+    grip := TouchArea {
+        x: root.width - 16px;
+        y: root.height - 16px;
+        width: 16px;
+        height: 16px;
+        mouse-cursor: nwse-resize;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.move && grip.pressed) {
+                root.resize(grip.mouse-x + grip.x, grip.mouse-y + grip.y);
+            }
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                root.dismiss();
+            }
+        }
     }
 
     keys := FocusScope {

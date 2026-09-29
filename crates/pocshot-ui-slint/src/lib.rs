@@ -100,6 +100,14 @@ pub fn run_pin(
     ui.on_dismiss(|| {
         let _ = slint::quit_event_loop();
     });
+    let ui_weak = ui.as_weak();
+    ui.on_resize(move |width, height| {
+        let (w, h) = clamp_pin_size(width, height);
+        if let Some(ui) = ui_weak.upgrade() {
+            ui.window()
+                .set_size(slint::PhysicalSize::new(w as u32, h as u32));
+        }
+    });
     ui.run().context("pin event loop failed")
 }
 
@@ -187,4 +195,28 @@ pub(crate) fn quit_after_grace() {
             let _ = slint::quit_event_loop();
         });
     });
+}
+
+/// Clamp a requested pin-window size to a sane, integral pixel value.
+pub fn clamp_pin_size(width: f32, height: f32) -> (f32, f32) {
+    let fix = |v: f32| {
+        if v.is_finite() {
+            v.max(16.0).round()
+        } else {
+            16.0
+        }
+    };
+    (fix(width), fix(height))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_pin_size_enforces_minimum_and_integral() {
+        assert_eq!(clamp_pin_size(-10.0, 0.0), (16.0, 16.0));
+        assert_eq!(clamp_pin_size(120.4, 80.6), (120.0, 81.0));
+        assert_eq!(clamp_pin_size(f32::INFINITY, f32::NAN), (16.0, 16.0));
+    }
 }
