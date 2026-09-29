@@ -958,11 +958,14 @@ impl Editor {
                 self.refresh_chrome();
             }
             digit if digit.len() == 1 => {
-                if let Some(index) = digit.chars().next().and_then(|c| c.to_digit(10)) {
-                    if (1..=6).contains(&index) {
-                        self.color = PALETTE[index as usize - 1];
-                        self.refresh_chrome();
-                    }
+                if let Some(index) = digit
+                    .chars()
+                    .next()
+                    .and_then(|c| c.to_digit(10))
+                    .filter(|i| (1..=6).contains(i))
+                {
+                    self.color = PALETTE[index as usize - 1];
+                    self.refresh_chrome();
                 }
             }
             _ => {}
