@@ -3,16 +3,10 @@
 //! selection rectangle and the toolbar, and forwards events to Rust. All
 //! editing logic lives in `lib.rs`/`editor.rs`.
 
-import { Icons } from "icons.slint";
-import { IconButton, Swatch } from "controls.slint";
+import { Icons, IconDisplay } from "icons.slint";
+import { IconButton, Swatch, Sep, Switch, ValueSlider, SectionLabel, HelpRow } from "controls.slint";
 import { Theme } from "theme.slint";
 export { Theme }
-
-component Sep inherits Rectangle {
-    width: 1px;
-    height: 26px;
-    background: Theme.chip-border;
-}
 
 component Chip inherits Rectangle {
     in property <string> label;
@@ -124,6 +118,82 @@ component SelHandle inherits Rectangle {
     }
 }
 
+component ActionButtons inherits HorizontalLayout {
+    in property <bool> can-undo: false;
+    in property <bool> can-redo: false;
+    in property <bool> settings-visible: false;
+    in property <bool> help-visible: false;
+    in property <bool> tips-below: false;
+    callback action(string);
+
+    height: 32px;
+    spacing: 4px;
+    alignment: start;
+
+    IconButton { icon: Icons.RotateCw; tooltip: "Refresh capture"; shortcut: "re-captures and resets"; tooltip-below: root.tips-below; clicked => { root.action("refresh"); } }
+    IconButton { icon: Icons.Undo2; tooltip: "Undo"; shortcut: "Ctrl+Z"; enabled: root.can-undo; tooltip-below: root.tips-below; clicked => { root.action("undo"); } }
+    IconButton { icon: Icons.Redo2; tooltip: "Redo"; shortcut: "Ctrl+Shift+Z"; enabled: root.can-redo; tooltip-below: root.tips-below; clicked => { root.action("redo"); } }
+    IconButton { icon: Icons.Download; tooltip: "Save"; shortcut: "Ctrl+S"; tooltip-below: root.tips-below; clicked => { root.action("save"); } }
+    IconButton { icon: Icons.Copy; tooltip: "Copy"; shortcut: "Enter / Ctrl+C"; tooltip-below: root.tips-below; clicked => { root.action("copy"); } }
+    IconButton { icon: Icons.Pin; tooltip: "Pin selection"; tooltip-below: root.tips-below; clicked => { root.action("pin"); } }
+    IconButton { icon: Icons.ScanText; tooltip: "OCR selection"; shortcut: "O"; tooltip-below: root.tips-below; clicked => { root.action("ocr"); } }
+    IconButton { icon: Icons.Trash2; tooltip: "Clear annotations"; tooltip-below: root.tips-below; clicked => { root.action("clear-annotations"); } }
+    IconButton { icon: Icons.Maximize; tooltip: "Reset selection"; tooltip-below: root.tips-below; clicked => { root.action("clear-selection"); } }
+    IconButton { icon: Icons.Settings; tooltip: "Settings"; active: root.settings-visible; tooltip-below: root.tips-below; clicked => { root.action("settings"); } }
+    IconButton { icon: Icons.CircleHelp; tooltip: "Help"; shortcut: "?"; active: root.help-visible; tooltip-below: root.tips-below; clicked => { root.action("help"); } }
+    IconButton { icon: Icons.X; tooltip: "Close"; shortcut: "Esc"; tooltip-below: root.tips-below; clicked => { root.action("quit"); } }
+}
+
+component ToolButtons inherits HorizontalLayout {
+    in property <int> active-tool: 0;
+    in property <bool> tips-below: false;
+    callback tool(int);
+
+    height: 32px;
+    spacing: 4px;
+    alignment: start;
+
+    IconButton { icon: Icons.MousePointer2; tooltip: "Select"; shortcut: "V"; active: root.active-tool == 0; tooltip-below: root.tips-below; clicked => { root.tool(0); } }
+    IconButton { icon: Icons.Square; tooltip: "Rectangle"; shortcut: "R"; active: root.active-tool == 1; tooltip-below: root.tips-below; clicked => { root.tool(1); } }
+    IconButton { icon: Icons.SquareFill; tooltip: "Filled rectangle"; shortcut: "Shift+R"; active: root.active-tool == 2; tooltip-below: root.tips-below; clicked => { root.tool(2); } }
+    IconButton { icon: Icons.Slash; tooltip: "Line"; shortcut: "L"; active: root.active-tool == 3; tooltip-below: root.tips-below; clicked => { root.tool(3); } }
+    IconButton { icon: Icons.ArrowUpRight; tooltip: "Arrow"; shortcut: "A"; active: root.active-tool == 4; tooltip-below: root.tips-below; clicked => { root.tool(4); } }
+    IconButton { icon: Icons.Circle; tooltip: "Circle"; shortcut: "C"; active: root.active-tool == 5; tooltip-below: root.tips-below; clicked => { root.tool(5); } }
+    IconButton { icon: Icons.CircleFill; tooltip: "Filled circle"; shortcut: "Shift+C"; active: root.active-tool == 6; tooltip-below: root.tips-below; clicked => { root.tool(6); } }
+    IconButton { icon: Icons.Pen; tooltip: "Pen"; shortcut: "P"; active: root.active-tool == 7; tooltip-below: root.tips-below; clicked => { root.tool(7); } }
+    IconButton { icon: Icons.Highlighter; tooltip: "Highlighter"; shortcut: "H"; active: root.active-tool == 8; tooltip-below: root.tips-below; clicked => { root.tool(8); } }
+    IconButton { icon: Icons.EyeOff; tooltip: "Redact"; shortcut: "D"; active: root.active-tool == 9; tooltip-below: root.tips-below; clicked => { root.tool(9); } }
+    IconButton { icon: Icons.Hash; tooltip: "Counter"; shortcut: "N"; active: root.active-tool == 10; tooltip-below: root.tips-below; clicked => { root.tool(10); } }
+    IconButton { icon: Icons.Type; tooltip: "Text"; shortcut: "T"; active: root.active-tool == 11; tooltip-below: root.tips-below; clicked => { root.tool(11); } }
+    IconButton { icon: Icons.Waves; tooltip: "Blur"; shortcut: "B"; active: root.active-tool == 12; tooltip-below: root.tips-below; clicked => { root.tool(12); } }
+    IconButton { icon: Icons.Grid3x3; tooltip: "Pixelate"; shortcut: "M"; active: root.active-tool == 13; tooltip-below: root.tips-below; clicked => { root.tool(13); } }
+    IconButton { icon: Icons.Eraser; tooltip: "Eraser"; shortcut: "E"; active: root.active-tool == 14; tooltip-below: root.tips-below; clicked => { root.tool(14); } }
+    IconButton { icon: Icons.BoxSelect; tooltip: "Text border"; shortcut: "G"; active: root.active-tool == 15; tooltip-below: root.tips-below; clicked => { root.tool(15); } }
+}
+
+component OptionControls inherits HorizontalLayout {
+    in property <int> active-color: 0;
+    in property <int> stroke-width: 3;
+    in property <bool> tips-below: false;
+    callback pick-color(int);
+    callback action(string);
+
+    height: 32px;
+    spacing: 4px;
+    alignment: start;
+
+    Swatch { fill: Theme.swatch0; active: root.active-color == 0; clicked => { root.pick-color(0); } }
+    Swatch { fill: Theme.swatch1; active: root.active-color == 1; clicked => { root.pick-color(1); } }
+    Swatch { fill: Theme.swatch2; active: root.active-color == 2; clicked => { root.pick-color(2); } }
+    Swatch { fill: Theme.swatch3; active: root.active-color == 3; clicked => { root.pick-color(3); } }
+    Swatch { fill: Theme.swatch4; active: root.active-color == 4; clicked => { root.pick-color(4); } }
+    Swatch { fill: Theme.swatch5; active: root.active-color == 5; clicked => { root.pick-color(5); } }
+    Sep { }
+    IconButton { icon: Icons.Minus; tooltip: "Thinner stroke"; shortcut: "["; button-width: 28px; tooltip-below: root.tips-below; clicked => { root.action("width-"); } }
+    Text { width: 30px; text: root.stroke-width; color: Theme.hint-text; font-size: 13px; vertical-alignment: center; horizontal-alignment: center; }
+    IconButton { icon: Icons.Plus; tooltip: "Thicker stroke"; shortcut: "]"; button-width: 28px; tooltip-below: root.tips-below; clicked => { root.action("width+"); } }
+}
+
 export component EditorWindow inherits Window {
     in property <image> shot;
     in property <image> overlay;
@@ -167,7 +237,12 @@ export component EditorWindow inherits Window {
     // selection like the egui toolbar does.
     in property <length> toolbar-x: 8px;
     in property <length> toolbar-y: 0px;
-    in property <length> toolbar-width: 1060px;
+    in property <length> toolbar-width: 900px;
+    in property <length> toolbar-height: 40px;
+    in property <bool> toolbar-wrapped: false;
+    in property <bool> toolbar-tooltips-below: false;
+    in property <bool> can-undo: false;
+    in property <bool> can-redo: false;
 
     // phase: 0 = down, 1 = move, 2 = up. Coordinates are normalised 0..1.
     callback pointer(float, float, int);
@@ -277,91 +352,61 @@ export component EditorWindow inherits Window {
     SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; win-w: root.width; win-h: root.height; cursor: nesw-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
     SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh / 2) * root.height; win-w: root.width; win-h: root.height; cursor: ew-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
 
-    // Toolbar, row 1: actions.
+    // Single floating toolbar. `toolbar-wrapped` chooses one row or two.
+    Rectangle {
+        visible: root.sel-visible;
+        x: root.toolbar-x - 2px;
+        y: root.toolbar-y - 2px;
+        width: root.toolbar-width + 4px;
+        height: root.toolbar-height + 4px;
+        border-radius: 12px;
+        background: #000000;
+        opacity: 0.35;
+    }
+
     Rectangle {
         x: root.toolbar-x;
         y: root.toolbar-y;
         width: root.toolbar-width;
-        height: 40px;
-        border-radius: 6px;
+        height: root.toolbar-height;
+        border-radius: 10px;
         background: Theme.toolbar-bg;
-    }
+        border-color: Theme.chip-border;
+        border-width: 1px;
 
-    HorizontalLayout {
-        x: root.toolbar-x + 8px;
-        y: root.toolbar-y + 4px;
-        height: 32px;
-        spacing: 4px;
-        alignment: start;
-
-        Chip { label: "↻"; tooltip: "Refresh capture (re-capture and reset)"; clicked => { root.action("refresh"); } }
-        Chip { label: "↶"; tooltip: "Undo (Ctrl+Z)"; clicked => { root.action("undo"); } }
-        Chip { label: "↷"; tooltip: "Redo (Ctrl+Shift+Z)"; clicked => { root.action("redo"); } }
-        Sep { }
-        Chip { label: "Copy"; chip-width: 54px; tooltip: "Copy selection (Enter / Ctrl+C)"; clicked => { root.action("copy"); } }
-        Chip { label: "Save"; chip-width: 54px; tooltip: "Save selection as PNG (Ctrl+S)"; clicked => { root.action("save"); } }
-        Chip { label: "Pin"; chip-width: 46px; tooltip: "Pin selection to the screen"; clicked => { root.action("pin"); } }
-        Sep { }
-        Chip { label: "OCR"; chip-width: 46px; tooltip: "Detect text in selection (O)"; clicked => { root.action("ocr"); } }
-        Chip { label: "✕ ann"; chip-width: 62px; tooltip: "Clear all annotations"; clicked => { root.action("clear-annotations"); } }
-        Chip { label: "✕ sel"; chip-width: 62px; tooltip: "Reset the selection to the whole image"; clicked => { root.action("clear-selection"); } }
-        Sep { }
-        Chip { label: "⚙"; tooltip: "Settings"; active: root.settings-visible; clicked => { root.action("settings"); } }
-        Chip { label: "?"; tooltip: "Help (?)"; active: root.help-visible; clicked => { root.action("help"); } }
-        Chip { label: "Quit"; chip-width: 54px; tooltip: "Close (Esc)"; clicked => { root.action("quit"); } }
-    }
-
-    // Toolbar, row 2: tools + colours + width.
-    Rectangle {
-        x: root.toolbar-x;
-        y: root.toolbar-y + 44px;
-        width: root.toolbar-width;
-        height: 44px;
-        border-radius: 6px;
-        background: Theme.toolbar-bg;
-    }
-
-    HorizontalLayout {
-        x: root.toolbar-x + 8px;
-        y: root.toolbar-y + 50px;
-        height: 32px;
-        spacing: 4px;
-        alignment: start;
-
-        Chip { label: "V"; tooltip: "Select (V) - drag to select, drag inside to move"; active: root.active-tool == 0; clicked => { root.tool(0); } }
-        Chip { label: "▭"; tooltip: "Rectangle (R)"; active: root.active-tool == 1; clicked => { root.tool(1); } }
-        Chip { label: "▣"; tooltip: "Filled rectangle (Shift+R)"; active: root.active-tool == 2; clicked => { root.tool(2); } }
-        Chip { label: "─"; tooltip: "Line (L)"; active: root.active-tool == 3; clicked => { root.tool(3); } }
-        Chip { label: "→"; tooltip: "Arrow (A)"; active: root.active-tool == 4; clicked => { root.tool(4); } }
-        Chip { label: "○"; tooltip: "Circle (C)"; active: root.active-tool == 5; clicked => { root.tool(5); } }
-        Chip { label: "●"; tooltip: "Filled circle (Shift+C)"; active: root.active-tool == 6; clicked => { root.tool(6); } }
-        Chip { label: "✎"; tooltip: "Pen (P)"; active: root.active-tool == 7; clicked => { root.tool(7); } }
-        Chip { label: "▬"; tooltip: "Highlighter (H)"; active: root.active-tool == 8; clicked => { root.tool(8); } }
-        Chip { label: "▨"; tooltip: "Redact (D) - fills text regions when OCR ran"; active: root.active-tool == 9; clicked => { root.tool(9); } }
-        Chip { label: "①"; tooltip: "Counter (N) - click or drag a callout"; active: root.active-tool == 10; clicked => { root.tool(10); } }
-        Chip { label: "T"; tooltip: "Text (T) - click, type, Enter"; active: root.active-tool == 11; clicked => { root.tool(11); } }
-        Chip { label: "◍"; tooltip: "Blur region (B)"; active: root.active-tool == 12; clicked => { root.tool(12); } }
-        Chip { label: "▦"; tooltip: "Pixelate region (M)"; active: root.active-tool == 13; clicked => { root.tool(13); } }
-        Chip { label: "⌫"; tooltip: "Eraser (E) - click an annotation"; active: root.active-tool == 14; clicked => { root.tool(14); } }
-        Chip { label: "G"; tooltip: "Text border (G) - boxes text regions when OCR ran"; active: root.active-tool == 15; clicked => { root.tool(15); } }
-        Sep { }
-        Chip { label: ""; chip-width: 26px; fill: Theme.swatch0; active: root.active-color == 0; tooltip: "Colour 1"; clicked => { root.pick-color(0); } }
-        Chip { label: ""; chip-width: 26px; fill: Theme.swatch1; active: root.active-color == 1; tooltip: "Colour 2"; clicked => { root.pick-color(1); } }
-        Chip { label: ""; chip-width: 26px; fill: Theme.swatch2; active: root.active-color == 2; tooltip: "Colour 3"; clicked => { root.pick-color(2); } }
-        Chip { label: ""; chip-width: 26px; fill: Theme.swatch3; active: root.active-color == 3; tooltip: "Colour 4"; clicked => { root.pick-color(3); } }
-        Chip { label: ""; chip-width: 26px; fill: Theme.swatch4; active: root.active-color == 4; tooltip: "Colour 5"; clicked => { root.pick-color(4); } }
-        Chip { label: ""; chip-width: 26px; fill: Theme.swatch5; active: root.active-color == 5; tooltip: "Colour 6"; clicked => { root.pick-color(5); } }
-        Sep { }
-        Chip { label: "−"; chip-width: 30px; tooltip: "Thinner stroke ( [ )"; clicked => { root.action("width-"); } }
-        Text {
-            width: 34px;
-            text: root.stroke-width;
-            color: Theme.hint-text;
-            font-size: 13px;
-            vertical-alignment: center;
-            horizontal-alignment: center;
+        if (!root.toolbar-wrapped) : HorizontalLayout {
+            x: 8px;
+            y: (root.toolbar-height - 32px) / 2;
+            height: 32px;
+            spacing: 6px;
+            alignment: start;
+            ActionButtons { can-undo: root.can-undo; can-redo: root.can-redo; settings-visible: root.settings-visible; help-visible: root.help-visible; tips-below: root.toolbar-tooltips-below; action(a) => { root.action(a); } }
+            Sep { }
+            ToolButtons { active-tool: root.active-tool; tips-below: root.toolbar-tooltips-below; tool(i) => { root.tool(i); } }
+            Sep { }
+            OptionControls { active-color: root.active-color; stroke-width: root.stroke-width; tips-below: root.toolbar-tooltips-below; pick-color(i) => { root.pick-color(i); } action(a) => { root.action(a); } }
         }
-        Chip { label: "+"; chip-width: 30px; tooltip: "Thicker stroke ( ] )"; clicked => { root.action("width+"); } }
+
+        if (root.toolbar-wrapped) : VerticalLayout {
+            x: 8px;
+            y: 8px;
+            spacing: 4px;
+            alignment: start;
+            HorizontalLayout {
+                height: 32px;
+                spacing: 6px;
+                alignment: start;
+                ActionButtons { can-undo: root.can-undo; can-redo: root.can-redo; settings-visible: root.settings-visible; help-visible: root.help-visible; tips-below: true; action(a) => { root.action(a); } }
+                Sep { }
+                OptionControls { active-color: root.active-color; stroke-width: root.stroke-width; tips-below: true; pick-color(i) => { root.pick-color(i); } action(a) => { root.action(a); } }
+            }
+            HorizontalLayout {
+                height: 32px;
+                spacing: 6px;
+                alignment: start;
+                ToolButtons { active-tool: root.active-tool; tips-below: true; tool(i) => { root.tool(i); } }
+            }
+        }
     }
 
     // Settings panel.

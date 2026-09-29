@@ -109,12 +109,6 @@ pub struct Editor {
 const TEXT_BORDER_PADDING: f32 = 6.0;
 /// Redact boxes only pad vertically by one pixel.
 const REDACT_VERTICAL_PADDING: f32 = 1.0;
-/// Approximate toolbar block size (window px); used to place it near the
-/// selection and to ignore canvas pointer events over it.
-const TOOLBAR_W: f32 = 1060.0;
-const TOOLBAR_H: f32 = 88.0;
-const TOOLBAR_MARGIN: f32 = 8.0;
-
 /// Shortcut reference shown by the help overlay (?, /).
 const HELP_TEXT: &str = "\
 Tools: V select · R rect · Shift+R filled · L line · A arrow · C circle · Shift+C filled
@@ -282,7 +276,7 @@ impl Editor {
                     let mut editor = editor.borrow_mut();
                     if let Some(color) = editor.palette.get(index.max(0) as usize) {
                         editor.color = *color;
-                        editor.refresh_hint();
+                        editor.refresh_chrome();
                     }
                 }
             });
@@ -313,7 +307,7 @@ impl Editor {
         editor.borrow_mut().rebuild_composited();
         editor.borrow().refresh_selection();
         editor.borrow().refresh_preview();
-        editor.borrow().refresh_hint();
+        editor.borrow().refresh_chrome();
         editor.borrow().apply_theme();
         editor.borrow().ui.set_help_text(HELP_TEXT.into());
         if editor.borrow().settings.ocr_enabled {
@@ -577,7 +571,7 @@ impl Editor {
         self.refresh_selection();
         self.refresh_preview();
         self.refresh_toolbar();
-        self.refresh_hint();
+        self.refresh_chrome();
     }
 
     fn on_action(&mut self, action: &str) {
@@ -586,25 +580,25 @@ impl Editor {
                 self.width = (self.width - 1.0).max(1.0);
                 self.settings.annotation_stroke_width = self.width;
                 self.persist_settings();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "width+" => {
                 self.width = (self.width + 1.0).min(24.0);
                 self.settings.annotation_stroke_width = self.width;
                 self.persist_settings();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "text-size-" => {
                 self.text_size = (self.text_size - 2.0).max(8.0);
                 self.settings.theme.fonts.annotation_text = self.text_size;
                 self.persist_settings();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "text-size+" => {
                 self.text_size = (self.text_size + 2.0).min(72.0);
                 self.settings.theme.fonts.annotation_text = self.text_size;
                 self.persist_settings();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "undo" => self.undo(),
             "redo" => self.redo(),
@@ -633,25 +627,25 @@ impl Editor {
                 self.copy_on_save = !self.copy_on_save;
                 self.settings.copy_on_save = self.copy_on_save;
                 self.persist_settings();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "snap" => {
                 self.snap_enabled = !self.snap_enabled;
                 self.settings.snap_enabled = self.snap_enabled;
                 self.persist_settings();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "ocr-confidence-" => {
                 self.ocr_confidence = (self.ocr_confidence - 0.05).max(0.1);
                 self.settings.ocr_confidence = self.ocr_confidence;
                 self.persist_settings();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "ocr-confidence+" => {
                 self.ocr_confidence = (self.ocr_confidence + 0.05).min(0.95);
                 self.settings.ocr_confidence = self.ocr_confidence;
                 self.persist_settings();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "reload-theme" => {
                 self.settings = pocshot_config::config::load();
@@ -674,7 +668,7 @@ impl Editor {
                 self.palette = palette;
                 self.apply_theme();
                 self.rebuild_composited();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "help" => {
                 self.help_visible = !self.help_visible;
@@ -684,12 +678,12 @@ impl Editor {
                 self.settings.show_snap_lines = !self.settings.show_snap_lines;
                 self.persist_settings();
                 self.rebuild_composited();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "auto-ocr" => {
                 self.settings.ocr_enabled = !self.settings.ocr_enabled;
                 self.persist_settings();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "quit" => crate::quit_event_loop(),
             _ => {}
@@ -710,32 +704,41 @@ impl Editor {
         Rect::from_min_max(to_win(self.selection.min), to_win(self.selection.max))
     }
 
-    /// Place the toolbar under the selection (above it when there is no room,
-    /// inside its bottom edge otherwise), like the egui build.
+    /// Place the toolbar near the selection using the pure `layout` math.
     pub(crate) fn refresh_toolbar(&mut self) {
         let win = self.window_size();
         if win.x <= 0.0 || win.y <= 0.0 {
             return;
         }
-        let sel = self.selection_window_px();
-        let hint_h = 28.0;
-        let max_y = (win.y - hint_h - TOOLBAR_H - TOOLBAR_MARGIN).max(0.0);
-
-        let below = sel.max.y + TOOLBAR_MARGIN;
-        let above = sel.min.y - TOOLBAR_H - TOOLBAR_MARGIN;
-        let y = if below <= max_y {
-            below
-        } else if above >= 0.0 {
-            above
-        } else {
-            (sel.max.y - TOOLBAR_H - TOOLBAR_MARGIN).clamp(0.0, max_y)
+        let g = &self.settings.theme.geometry;
+        let spec = crate::layout::ToolbarSpec {
+            button: 32.0,
+            button_gap: 4.0,
+            swatch: 26.0,
+            swatch_gap: 4.0,
+            sep_w: 1.0,
+            pad: g.toolbar_padding,
+            margin: 8.0,
+            row_h: 40.0,
+            hint_h: 28.0,
+            n_actions: 12,
+            n_tools: 16,
+            n_swatches: 6,
         };
-        let x = sel.min.x.clamp(0.0, (win.x - TOOLBAR_W).max(0.0));
+        let sel = self.selection_window_px();
+        let l = crate::layout::toolbar_layout(
+            (win.x, win.y),
+            (sel.min.x, sel.min.y, sel.width(), sel.height()),
+            &spec,
+        );
 
-        self.ui.set_toolbar_x(x);
-        self.ui.set_toolbar_y(y);
-        self.ui.set_toolbar_width(TOOLBAR_W);
-        self.toolbar_rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(TOOLBAR_W, TOOLBAR_H));
+        self.ui.set_toolbar_x(l.x);
+        self.ui.set_toolbar_y(l.y);
+        self.ui.set_toolbar_width(l.width);
+        self.ui.set_toolbar_height(l.height);
+        self.ui.set_toolbar_wrapped(l.wrapped);
+        self.ui.set_toolbar_tooltips_below(l.tooltips_below);
+        self.toolbar_rect = Rect::from_min_size(Pos2::new(l.x, l.y), Vec2::new(l.width, l.height));
     }
 
     /// True when the normalised pointer position falls over the toolbar.
@@ -802,7 +805,7 @@ impl Editor {
                 self.selection = self.image_rect();
                 self.refresh_selection();
                 self.refresh_toolbar();
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             return;
         }
@@ -857,17 +860,17 @@ impl Editor {
             "o" => self.toggle_ocr(),
             "[" => {
                 self.width = (self.width - 1.0).max(1.0);
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             "]" => {
                 self.width = (self.width + 1.0).min(24.0);
-                self.refresh_hint();
+                self.refresh_chrome();
             }
             digit if digit.len() == 1 => {
                 if let Some(index) = digit.chars().next().and_then(|c| c.to_digit(10)) {
                     if (1..=6).contains(&index) {
                         self.color = PALETTE[index as usize - 1];
-                        self.refresh_hint();
+                        self.refresh_chrome();
                     }
                 }
             }
@@ -911,7 +914,7 @@ impl Editor {
             _ => return,
         }
         self.refresh_preview();
-        self.refresh_hint();
+        self.refresh_chrome();
     }
 
     fn set_tool(&mut self, tool: ToolKind) {
@@ -921,7 +924,7 @@ impl Editor {
             self.refresh_preview();
         }
         self.tool = tool;
-        self.refresh_hint();
+        self.refresh_chrome();
     }
 
     /// Repaint the committed overlay (base + annotations) and publish it.
@@ -1226,13 +1229,15 @@ impl Editor {
         self.ui.set_sel_handles_visible(!self.selection_is_full());
     }
 
-    fn refresh_hint(&self) {
+    fn refresh_chrome(&self) {
         self.ui
             .set_active_tool(self.tool_index());
         self.ui
             .set_active_color(self.palette.iter().position(|c| *c == self.color).unwrap_or(0) as i32);
         self.ui.set_stroke_width(self.width as i32);
         self.ui.set_text_size(self.text_size as i32);
+        self.ui.set_can_undo(!self.history.is_empty());
+        self.ui.set_can_redo(!self.redo_stack.is_empty());
         self.ui
             .set_ocr_confidence_value(format!("{:.2}", self.ocr_confidence).into());
         self.ui
