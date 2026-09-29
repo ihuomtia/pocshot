@@ -69,13 +69,13 @@ export component IconButton inherits Rectangle {
 
     IconDisplay {
         icon: root.icon;
-        size: Theme.icon-size;
+        size: Theme.icon-size * 1px;
         stroke-width: Theme.icon-stroke;
         stroke: !root.enabled ? Theme.icon-fg-disabled
             : (root.active || ta.has-hover) ? Theme.icon-fg-active
             : Theme.icon-fg-idle;
-        x: (root.width - Theme.icon-size) / 2;
-        y: (root.height - Theme.icon-size) / 2;
+        x: (root.width - Theme.icon-size * 1px) / 2;
+        y: (root.height - Theme.icon-size * 1px) / 2;
     }
 
     if (ta.has-hover && root.enabled && root.tooltip != "") : IconTooltip {

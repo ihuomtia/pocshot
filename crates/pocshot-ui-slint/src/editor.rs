@@ -386,6 +386,21 @@ impl Editor {
         theme.set_swatch3(to_slint_color(self.palette[3]));
         theme.set_swatch4(to_slint_color(self.palette[4]));
         theme.set_swatch5(to_slint_color(self.palette[5]));
+        theme.set_panel_bg(to_slint_color(colors.panel_bg));
+        theme.set_panel_border(to_slint_color(colors.panel_border));
+        theme.set_control_track(to_slint_color(colors.control_track));
+        theme.set_icon_fg_idle(to_slint_color(colors.icon_fg_idle));
+        theme.set_icon_fg_active(to_slint_color(colors.icon_fg_active));
+        theme.set_icon_fg_disabled(to_slint_color(colors.icon_fg_disabled));
+        theme.set_text_faint(to_slint_color(colors.text_faint));
+        theme.set_tooltip_border(to_slint_color(colors.tooltip_border));
+        let g = &self.settings.theme.geometry;
+        theme.set_icon_size(g.icon_size);
+        theme.set_icon_stroke(g.icon_stroke);
+        let f = &self.settings.theme.fonts;
+        theme.set_row_font(f.row);
+        theme.set_section_font(f.section);
+        theme.set_shortcut_font(f.shortcut);
     }
 
     /// Write the current settings back to disk (best effort).
@@ -624,6 +639,33 @@ impl Editor {
     }
 
     fn on_action(&mut self, action: &str) {
+        if let Some(v) = action.strip_prefix("width-set:") {
+            if let Ok(v) = v.parse::<f32>() {
+                self.width = v.clamp(1.0, 24.0);
+                self.settings.annotation_stroke_width = self.width;
+                self.persist_settings();
+                self.refresh_chrome();
+            }
+            return;
+        }
+        if let Some(v) = action.strip_prefix("text-size-set:") {
+            if let Ok(v) = v.parse::<f32>() {
+                self.text_size = v.clamp(8.0, 72.0);
+                self.settings.theme.fonts.annotation_text = self.text_size;
+                self.persist_settings();
+                self.refresh_chrome();
+            }
+            return;
+        }
+        if let Some(v) = action.strip_prefix("ocr-confidence-set:") {
+            if let Ok(v) = v.parse::<f32>() {
+                self.ocr_confidence = v.clamp(0.1, 0.95);
+                self.settings.ocr_confidence = self.ocr_confidence;
+                self.persist_settings();
+                self.refresh_chrome();
+            }
+            return;
+        }
         match action {
             "width-" => {
                 self.width = (self.width - 1.0).max(1.0);
@@ -1287,6 +1329,7 @@ impl Editor {
         self.ui.set_text_size(self.text_size as i32);
         self.ui.set_can_undo(!self.history.is_empty());
         self.ui.set_can_redo(!self.redo_stack.is_empty());
+        self.ui.set_ocr_confidence(self.ocr_confidence);
         self.ui
             .set_ocr_confidence_value(format!("{:.2}", self.ocr_confidence).into());
         self.ui

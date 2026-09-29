@@ -8,80 +8,6 @@ import { IconButton, Swatch, Sep, Switch, ValueSlider, SectionLabel, HelpRow } f
 import { Theme } from "theme.slint";
 export { Theme }
 
-component Chip inherits Rectangle {
-    in property <string> label;
-    in property <color> fill: #262626;
-    in property <bool> active: false;
-    in property <length> chip-width: 38px;
-    in property <string> tooltip: "";
-    callback clicked;
-
-    width: root.chip-width;
-    height: 32px;
-    border-radius: 6px;
-    border-color: Theme.chip-border;
-    border-width: 1px;
-    background: root.active ? Theme.accent : (ta.has-hover ? Theme.chip-hover : root.fill);
-
-    Text {
-        text: root.label;
-        color: #ffffff;
-        font-size: 13px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    if (ta.has-hover && root.tooltip != "") : Rectangle {
-        y: -30px;
-        x: root.width / 2 - 90px;
-        width: 180px;
-        height: 22px;
-        background: Theme.tooltip-bg;
-        border-radius: 4px;
-        Text {
-            x: 8px;
-            width: parent.width - 16px;
-            text: root.tooltip;
-            color: Theme.hint-text;
-            font-size: 12px;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-    }
-
-    ta := TouchArea {
-        clicked => {
-            root.clicked();
-        }
-    }
-}
-
-/// A labelled settings row with a toggle chip.
-component SettingsRow inherits HorizontalLayout {
-    in property <string> title;
-    in property <string> value: "off";
-    callback toggled;
-
-    height: 34px;
-    alignment: start;
-    spacing: 8px;
-
-    Text {
-        text: root.title;
-        color: Theme.hint-text;
-        font-size: 13px;
-        vertical-alignment: center;
-        width: 130px;
-    }
-    Chip {
-        label: root.value == "on" ? "On" : "Off";
-        active: root.value == "on";
-        chip-width: 48px;
-        tooltip: "Toggle";
-        clicked => { root.toggled(); }
-    }
-}
-
 component SelHandle inherits Rectangle {
     in property <bool> show: false;
     in property <length> hx;
@@ -233,6 +159,7 @@ export component EditorWindow inherits Window {
     in property <int> text-size: 24;
     in property <int> stroke-width: 3;
     in property <string> ocr-confidence-value: "0.50";
+    in property <float> ocr-confidence: 0.5;
     // Help overlay.
     in property <bool> help-visible: false;
     in property <[HelpRow]> help-rows;
@@ -414,106 +341,106 @@ export component EditorWindow inherits Window {
 
     // Settings panel.
     if (root.settings-visible) : Rectangle {
-        x: root.width - 268px;
-        y: root.height - 316px;
-        width: 256px;
-        height: 236px;
-        background: #161616f2;
-        border-radius: 8px;
-        border-color: Theme.chip-border;
+        x: root.width - 328px;
+        y: root.height - 520px;
+        width: 316px;
+        height: 500px;
+        background: Theme.panel-bg;
+        border-radius: 14px;
+        border-color: Theme.panel-border;
         border-width: 1px;
 
-        Text {
-            x: 12px;
-            y: 8px;
-            text: "Settings";
-            color: #ffffff;
-            font-size: 15px;
+        HorizontalLayout {
+            x: 16px;
+            y: 14px;
+            height: 28px;
+            spacing: 8px;
+            alignment: start;
+            IconDisplay { icon: Icons.Settings; size: 16px; stroke: #ffffff; }
+            Text { text: "Settings"; color: #ffffff; font-size: 15px; vertical-alignment: center; }
+        }
+        IconButton {
+            x: parent.width - 44px;
+            y: 12px;
+            icon: Icons.X;
+            tooltip: "Close";
+            button-width: 28px;
+            tooltip-below: true;
+            clicked => { root.action("settings"); }
         }
 
-        VerticalLayout {
-            x: 12px;
-            y: 40px;
-            width: 232px;
-            spacing: 4px;
+        Flickable {
+            x: 16px;
+            y: 52px;
+            width: parent.width - 32px;
+            height: parent.height - 68px;
+            content-width: self.width;
+            content-height: settings-list.preferred-height;
+            settings-list := VerticalLayout {
+                width: 100%;
+                spacing: 8px;
+                alignment: start;
 
-            SettingsRow {
-                title: "Copy on save";
-                value: root.copy-save-value;
-                toggled => { root.action("copy-save"); }
-            }
-            SettingsRow {
-                title: "Snapping";
-                value: root.snap-value;
-                toggled => { root.action("snap"); }
-            }
-            SettingsRow {
-                title: "Show guides";
-                value: root.guides-value;
-                toggled => { root.action("guides"); }
-            }
-            SettingsRow {
-                title: "Auto OCR";
-                value: root.auto-ocr-value;
-                toggled => { root.action("auto-ocr"); }
-            }
-            HorizontalLayout {
-                height: 34px;
-                spacing: 8px;
-                alignment: start;
-                Text {
-                    text: "OCR confidence";
-                    color: Theme.hint-text;
-                    font-size: 13px;
-                    vertical-alignment: center;
-                    width: 130px;
+                SectionLabel { icon: Icons.Download; text: "Export"; }
+                Switch { label: "Copy on save"; checked: root.copy-save-value == "on"; toggled => { root.action("copy-save"); } }
+
+                SectionLabel { icon: Icons.Maximize; text: "Snapping"; }
+                Switch { label: "Snapping"; checked: root.snap-value == "on"; toggled => { root.action("snap"); } }
+                Switch { label: "Show guides"; checked: root.guides-value == "on"; toggled => { root.action("guides"); } }
+
+                SectionLabel { icon: Icons.ScanText; text: "OCR"; }
+                Switch { label: "Auto OCR on capture"; checked: root.auto-ocr-value == "on"; toggled => { root.action("auto-ocr"); } }
+                HorizontalLayout {
+                    height: 28px;
+                    spacing: 8px;
+                    alignment: start;
+                    Text { text: "Min confidence"; color: Theme.hint-text; font-size: 13px; width: 150px; vertical-alignment: center; }
+                    ValueSlider {
+                        width: 80px;
+                        height: 24px;
+                        min: 0.10;
+                        max: 0.95;
+                        value: root.ocr-confidence;
+                        changed(v) => { root.action("ocr-confidence-set:" + v); }
+                    }
+                    Text { text: root.ocr-confidence-value; color: #ffffff; font-size: 13px; width: 40px; horizontal-alignment: center; vertical-alignment: center; }
                 }
-                Chip { label: "−"; chip-width: 30px; clicked => { root.action("ocr-confidence-"); } }
-                Text {
-                    text: root.ocr-confidence-value;
-                    color: #ffffff;
-                    font-size: 13px;
-                    vertical-alignment: center;
-                    width: 44px;
-                    horizontal-alignment: center;
+
+                SectionLabel { icon: Icons.Pen; text: "Annotations"; }
+                HorizontalLayout {
+                    height: 28px;
+                    spacing: 8px;
+                    alignment: start;
+                    Text { text: "Stroke width"; color: Theme.hint-text; font-size: 13px; width: 150px; vertical-alignment: center; }
+                    ValueSlider { width: 80px; height: 24px; min: 1; max: 24; value: root.stroke-width; changed(v) => { root.action("width-set:" + v); } }
                 }
-                Chip { label: "+"; chip-width: 30px; clicked => { root.action("ocr-confidence+"); } }
-            }
-            HorizontalLayout {
-                height: 34px;
-                spacing: 8px;
-                alignment: start;
-                Text {
-                    text: "Theme";
-                    color: Theme.hint-text;
-                    font-size: 13px;
-                    vertical-alignment: center;
-                    width: 130px;
+                HorizontalLayout {
+                    height: 28px;
+                    spacing: 8px;
+                    alignment: start;
+                    Text { text: "Text size"; color: Theme.hint-text; font-size: 13px; width: 150px; vertical-alignment: center; }
+                    ValueSlider { width: 80px; height: 24px; min: 8; max: 72; value: root.text-size; changed(v) => { root.action("text-size-set:" + v); } }
                 }
-                Chip { label: "Reload"; chip-width: 64px; tooltip: "Re-read config.json"; clicked => { root.action("reload-theme"); } }
-                Chip { label: "? Help"; chip-width: 64px; clicked => { root.action("help"); } }
-            }
-            HorizontalLayout {
-                height: 34px;
-                spacing: 8px;
-                alignment: start;
-                Text {
-                    text: "Text size";
-                    color: Theme.hint-text;
-                    font-size: 13px;
-                    vertical-alignment: center;
-                    width: 130px;
+                HorizontalLayout {
+                    height: 32px;
+                    spacing: 6px;
+                    alignment: start;
+                    Swatch { fill: Theme.swatch0; active: root.active-color == 0; clicked => { root.pick-color(0); } }
+                    Swatch { fill: Theme.swatch1; active: root.active-color == 1; clicked => { root.pick-color(1); } }
+                    Swatch { fill: Theme.swatch2; active: root.active-color == 2; clicked => { root.pick-color(2); } }
+                    Swatch { fill: Theme.swatch3; active: root.active-color == 3; clicked => { root.pick-color(3); } }
+                    Swatch { fill: Theme.swatch4; active: root.active-color == 4; clicked => { root.pick-color(4); } }
+                    Swatch { fill: Theme.swatch5; active: root.active-color == 5; clicked => { root.pick-color(5); } }
                 }
-                Chip { label: "−"; chip-width: 30px; clicked => { root.action("text-size-"); } }
-                Text {
-                    text: root.text-size;
-                    color: #ffffff;
-                    font-size: 13px;
-                    vertical-alignment: center;
-                    width: 34px;
-                    horizontal-alignment: center;
+
+                SectionLabel { icon: Icons.RotateCw; text: "Theme"; }
+                HorizontalLayout {
+                    height: 32px;
+                    spacing: 8px;
+                    alignment: start;
+                    IconButton { icon: Icons.RotateCw; tooltip: "Reload theme"; button-width: 32px; tooltip-below: true; clicked => { root.action("reload-theme"); } }
+                    Text { text: "re-reads config.json"; color: Theme.text-faint; font-size: 11px; vertical-alignment: center; }
                 }
-                Chip { label: "+"; chip-width: 30px; clicked => { root.action("text-size+"); } }
             }
         }
     }
