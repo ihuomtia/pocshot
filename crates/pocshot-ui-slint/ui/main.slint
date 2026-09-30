@@ -148,9 +148,15 @@ export component EditorWindow inherits Window {
     in property <float> hover-ny;
     in property <float> hover-nw;
     in property <float> hover-nh;
-    // Brief full-length snap guide overlay (fades shortly after a snap).
-    in property <image> snap-guide;
+    // Brief full-length snap guides: plain lines in capture coordinates, so
+    // flashing one costs a couple of property updates (no image upload).
     in property <bool> snap-guide-visible: false;
+    in property <bool> snap-guide-has-vertical: false;
+    in property <bool> snap-guide-has-horizontal: false;
+    in property <float> snap-guide-x;
+    in property <float> snap-guide-y;
+    in property <float> snap-guide-width: 1;
+    in property <float> snap-guide-height: 1;
     // Hint bar: a status/tool line plus contextual shortcut chips.
     in property <string> status: "";
     in property <string> hint-primary: "";
@@ -228,14 +234,20 @@ export component EditorWindow inherits Window {
         background: Theme.ocr-hover;
     }
 
-    // Brief snap guide, spanning the full capture width/height.
-    Image {
-        visible: root.snap-guide-visible;
-        source: root.snap-guide;
-        x: root.shot-nx * root.width;
+    // Brief snap guides, spanning the full capture width/height.
+    if (root.snap-guide-visible && root.snap-guide-has-vertical) : Rectangle {
+        x: root.shot-nx * root.width + root.snap-guide-x / root.snap-guide-width * root.shot-nw * root.width;
         y: root.shot-ny * root.height;
-        width: root.shot-nw * root.width;
+        width: 1px;
         height: root.shot-nh * root.height;
+        background: Theme.snap-line;
+    }
+    if (root.snap-guide-visible && root.snap-guide-has-horizontal) : Rectangle {
+        x: root.shot-nx * root.width;
+        y: root.shot-ny * root.height + root.snap-guide-y / root.snap-guide-height * root.shot-nh * root.height;
+        width: root.shot-nw * root.width;
+        height: 1px;
+        background: Theme.snap-line;
     }
 
     Image {

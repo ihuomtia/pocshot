@@ -462,6 +462,7 @@ impl Editor {
             ocr_box.g(),
             ocr_box.b(),
         ));
+        theme.set_snap_line(to_slint_color(colors.snap_line_near));
         theme.set_icon_fg_idle(to_slint_color(colors.icon_fg_idle));
         theme.set_icon_fg_active(to_slint_color(colors.icon_fg_active));
         theme.set_icon_fg_disabled(to_slint_color(colors.icon_fg_disabled));
@@ -1496,9 +1497,10 @@ impl Editor {
         self.publish_preview(image, x0, y0, x1, y1);
     }
 
-    /// Briefly overlay the active snap guides on the composited image, spanning
-    /// the full capture width/height (egui's "brief snap indicators"). Fades
-    /// out `SNAP_GUIDE_FADE` after the last snap update.
+    /// Briefly overlay the active snap guides as plain full-length lines, drawn
+    /// by Slint (no image upload): egui's "brief snap indicators". They are
+    /// shown only while a gesture is in progress and fade out shortly after the
+    /// last snap update.
     fn refresh_snap_guide(&mut self) {
         let Some(updated) = self.snap_updated else {
             self.ui.set_snap_guide_visible(false);
@@ -1520,32 +1522,25 @@ impl Editor {
             self.ui.set_snap_guide_visible(false);
             return;
         }
-        // Fade out over the tail of the window (egui draws it solid).
-        let alpha = (255.0 * (1.0 - age.as_secs_f32() / SNAP_GUIDE_FADE.as_secs_f32()))
-            .clamp(0.0, 255.0) as u8;
-        let near = self.settings.theme.colors.snap_line_near;
-        let color = Color32::from_rgba_unmultiplied(near.r(), near.g(), near.b(), alpha);
         let (w, h) = (self.size().x, self.size().y);
-        let mut guide = (*self.base).clone();
-        if let Some(sx) = self.snap_x {
-            pocshot_annotate::raster::draw_line_on_image(
-                &mut guide,
-                Pos2::new(sx, 0.0),
-                Pos2::new(sx, h),
-                color,
-                1.0,
-            );
+        // One property update per visible line: no full-capture copy, no image
+        // upload on every tick.
+        match self.snap_x {
+            Some(sx) => {
+                self.ui.set_snap_guide_x(sx);
+                self.ui.set_snap_guide_has_vertical(true);
+            }
+            None => self.ui.set_snap_guide_has_vertical(false),
         }
-        if let Some(sy) = self.snap_y {
-            pocshot_annotate::raster::draw_line_on_image(
-                &mut guide,
-                Pos2::new(0.0, sy),
-                Pos2::new(w, sy),
-                color,
-                1.0,
-            );
+        match self.snap_y {
+            Some(sy) => {
+                self.ui.set_snap_guide_y(sy);
+                self.ui.set_snap_guide_has_horizontal(true);
+            }
+            None => self.ui.set_snap_guide_has_horizontal(false),
         }
-        self.ui.set_snap_guide(to_slint_image(&guide));
+        self.ui.set_snap_guide_width(w);
+        self.ui.set_snap_guide_height(h);
         self.ui.set_snap_guide_visible(true);
     }
 
