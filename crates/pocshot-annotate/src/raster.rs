@@ -6,13 +6,69 @@ use ecolor::Color32;
 use emath::{pos2, Pos2};
 use image::{Rgba, RgbaImage};
 
+/// Sub-samples per axis used to estimate partial pixel coverage (4x4 = 16).
+const AA_SAMPLES: u32 = 4;
+
 pub fn blend_pixel(image: &mut RgbaImage, x: u32, y: u32, color: Rgba<u8>) {
+    blend_coverage(image, x, y, color, 1.0);
+}
+
+/// Blend `color` into pixel `(x, y)` weighted by fractional `coverage` (0..1),
+/// so edge pixels can be partially tinted. Coverage 1.0 is equivalent to
+/// [`blend_pixel`].
+pub fn blend_coverage(image: &mut RgbaImage, x: u32, y: u32, color: Rgba<u8>, coverage: f32) {
+    let coverage = coverage.clamp(0.0, 1.0);
+    if coverage <= 0.0 {
+        return;
+    }
     let p = image.get_pixel_mut(x, y);
-    let a = color.0[3] as f32 / 255.0;
+    let a = color.0[3] as f32 / 255.0 * coverage;
     p.0[0] = (color.0[0] as f32 * a + p.0[0] as f32 * (1.0 - a)) as u8;
     p.0[1] = (color.0[1] as f32 * a + p.0[1] as f32 * (1.0 - a)) as u8;
     p.0[2] = (color.0[2] as f32 * a + p.0[2] as f32 * (1.0 - a)) as u8;
     p.0[3] = 255;
+}
+
+/// Paint the pixel box `[x0..=x1] x [y0..=y1]` (index space, clipped to the
+/// image), blending each pixel with the fraction of 4x4 sub-samples for which
+/// `inside` is true. This is the antialiasing primitive the curved shapes use;
+/// coordinates are pixel indices, so sub-samples straddle each pixel centre.
+fn fill_box_aa<F: Fn(f32, f32) -> bool>(
+    image: &mut RgbaImage,
+    x0: i32,
+    y0: i32,
+    x1: i32,
+    y1: i32,
+    color: Rgba<u8>,
+    inside: F,
+) {
+    let (iw, ih) = (image.width() as i32, image.height() as i32);
+    let x0 = x0.max(0);
+    let y0 = y0.max(0);
+    let x1 = x1.min(iw - 1);
+    let y1 = y1.min(ih - 1);
+    if x1 < x0 || y1 < y0 {
+        return;
+    }
+    let step = 1.0 / AA_SAMPLES as f32;
+    let total = (AA_SAMPLES * AA_SAMPLES) as f32;
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            let mut hits = 0u32;
+            for sy in 0..AA_SAMPLES {
+                let py = y as f32 - 0.5 + (sy as f32 + 0.5) * step;
+                for sx in 0..AA_SAMPLES {
+                    let px = x as f32 - 0.5 + (sx as f32 + 0.5) * step;
+                    if inside(px, py) {
+                        hits += 1;
+                    }
+                }
+            }
+            if hits > 0 {
+                blend_coverage(image, x as u32, y as u32, color, hits as f32 / total);
+            }
+        }
+    }
 }
 
 pub fn draw_line_on_image(
@@ -22,30 +78,25 @@ pub fn draw_line_on_image(
     color: Color32,
     width: f32,
 ) {
-    let (iw, ih) = (image.width() as f32, image.height() as f32);
-    let dx = end.x - start.x;
-    let dy = end.y - start.y;
-    let len = dx.hypot(dy).max(1.0);
-    let steps = (len * 2.0).ceil() as i32;
-    // Stamping radius: the run of covered pixels is 2w+1 wide, so choose w so
-    // the thickness matches `width` (1 -> 1 px, 3 -> 3 px, ...).
-    let w = ((width.max(1.0) - 1.0) / 2.0).ceil() as i32;
+    // Analytic coverage: a pixel is tinted by how far its centre sits inside
+    // the stroke, feathered over one pixel so diagonal edges stay smooth. The
+    // half-width keeps the rendered run equal to `width` at integer
+    // coordinates (1 -> 1 px, 3 -> 3 px, ...).
+    let (iw, ih) = (image.width() as i32, image.height() as i32);
+    let half = width.max(1.0) * 0.5;
     let rgba = Rgba([color.r(), color.g(), color.b(), color.a()]);
+    let pad = half + 1.0;
+    let x0 = (start.x.min(end.x) - pad).floor() as i32;
+    let x1 = (start.x.max(end.x) + pad).ceil() as i32;
+    let y0 = (start.y.min(end.y) - pad).floor() as i32;
+    let y1 = (start.y.max(end.y) + pad).ceil() as i32;
 
-    for i in 0..=steps {
-        let t = i as f32 / steps as f32;
-        let cx = start.x + dx * t;
-        let cy = start.y + dy * t;
-        for oy in -w..=w {
-            for ox in -w..=w {
-                if ox * ox + oy * oy > w * w {
-                    continue;
-                }
-                let x = (cx + ox as f32).round() as i32;
-                let y = (cy + oy as f32).round() as i32;
-                if x >= 0 && y >= 0 && (x as f32) < iw && (y as f32) < ih {
-                    blend_pixel(image, x as u32, y as u32, rgba);
-                }
+    for y in y0.max(0)..=y1.min(ih - 1) {
+        for x in x0.max(0)..=x1.min(iw - 1) {
+            let dist = dist_to_segment(pos2(x as f32, y as f32), start, end);
+            let coverage = (half + 0.5 - dist).clamp(0.0, 1.0);
+            if coverage > 0.0 {
+                blend_coverage(image, x as u32, y as u32, rgba, coverage);
             }
         }
     }
@@ -74,48 +125,45 @@ pub fn fill_ellipse_on_image(
     ry: f32,
     color: Color32,
 ) {
-    let (iw, ih) = (image.width() as f32, image.height() as f32);
-    let x0 = (center.x - rx).floor() as i32;
-    let y0 = (center.y - ry).floor() as i32;
-    let x1 = (center.x + rx).ceil() as i32;
-    let y1 = (center.y + ry).ceil() as i32;
     let rgba = Rgba([color.r(), color.g(), color.b(), color.a()]);
-    let rxm = rx.max(1.0);
-    let rym = ry.max(1.0);
-    for y in y0..y1 {
-        for x in x0..x1 {
-            if x < 0 || y < 0 || (x as f32) >= iw || (y as f32) >= ih {
-                continue;
-            }
-            let dx = (x as f32 - center.x) / rxm;
-            let dy = (y as f32 - center.y) / rym;
-            if dx * dx + dy * dy <= 1.0 {
-                blend_pixel(image, x as u32, y as u32, rgba);
-            }
-        }
+    if rx <= 0.0 || ry <= 0.0 {
+        return;
     }
+    let (rxm, rym) = (rx, ry);
+    fill_box_aa(
+        image,
+        (center.x - rx - 1.0).floor() as i32,
+        (center.y - ry - 1.0).floor() as i32,
+        (center.x + rx + 1.0).ceil() as i32,
+        (center.y + ry + 1.0).ceil() as i32,
+        rgba,
+        move |px, py| {
+            let dx = (px - center.x) / rxm;
+            let dy = (py - center.y) / rym;
+            dx * dx + dy * dy <= 1.0
+        },
+    );
 }
 
 pub fn fill_circle_on_image(image: &mut RgbaImage, center: Pos2, radius: f32, color: Color32) {
-    let (iw, ih) = (image.width() as f32, image.height() as f32);
-    let x0 = (center.x - radius).floor() as i32;
-    let y0 = (center.y - radius).floor() as i32;
-    let x1 = (center.x + radius).ceil() as i32;
-    let y1 = (center.y + radius).ceil() as i32;
     let rgba = Rgba([color.r(), color.g(), color.b(), color.a()]);
-    let r2 = radius.max(1.0);
-    for y in y0..y1 {
-        for x in x0..x1 {
-            if x < 0 || y < 0 || (x as f32) >= iw || (y as f32) >= ih {
-                continue;
-            }
-            let dx = x as f32 - center.x;
-            let dy = y as f32 - center.y;
-            if dx * dx + dy * dy <= r2 * r2 {
-                blend_pixel(image, x as u32, y as u32, rgba);
-            }
-        }
+    if radius <= 0.0 {
+        return;
     }
+    let r = radius;
+    fill_box_aa(
+        image,
+        (center.x - radius - 1.0).floor() as i32,
+        (center.y - radius - 1.0).floor() as i32,
+        (center.x + radius + 1.0).ceil() as i32,
+        (center.y + radius + 1.0).ceil() as i32,
+        rgba,
+        move |px, py| {
+            let dx = px - center.x;
+            let dy = py - center.y;
+            dx * dx + dy * dy <= r * r
+        },
+    );
 }
 
 /// Draw a stroked (hollow) circle ring of the given width.
@@ -126,61 +174,52 @@ pub fn draw_circle_on_image(
     width: f32,
     color: Color32,
 ) {
-    let (iw, ih) = (image.width() as f32, image.height() as f32);
-    let outer = radius + width;
-    let x0 = (center.x - outer).floor() as i32;
-    let y0 = (center.y - outer).floor() as i32;
-    let x1 = (center.x + outer).ceil() as i32;
-    let y1 = (center.y + outer).ceil() as i32;
     let rgba = Rgba([color.r(), color.g(), color.b(), color.a()]);
-    let ro = outer.max(1.0);
-    let ri = radius.max(0.0);
-    for y in y0..y1 {
-        for x in x0..x1 {
-            if x < 0 || y < 0 || (x as f32) >= iw || (y as f32) >= ih {
-                continue;
-            }
-            let dx = x as f32 - center.x;
-            let dy = y as f32 - center.y;
-            let d2 = dx * dx + dy * dy;
-            if d2 <= ro * ro && d2 >= ri * ri {
-                blend_pixel(image, x as u32, y as u32, rgba);
-            }
-        }
+    let outer = radius + width;
+    if outer <= 0.0 {
+        return;
     }
+    let (ri, ro) = (radius.max(0.0), outer);
+    fill_box_aa(
+        image,
+        (center.x - outer - 1.0).floor() as i32,
+        (center.y - outer - 1.0).floor() as i32,
+        (center.x + outer + 1.0).ceil() as i32,
+        (center.y + outer + 1.0).ceil() as i32,
+        rgba,
+        move |px, py| {
+            let dx = px - center.x;
+            let dy = py - center.y;
+            let d2 = dx * dx + dy * dy;
+            d2 <= ro * ro && d2 >= ri * ri
+        },
+    );
 }
 
 /// Fill an axis-aligned bounding-box of the given triangle, testing barycentric
 /// containment so only the triangle interior is painted.
 pub fn fill_triangle_on_image(image: &mut RgbaImage, a: Pos2, b: Pos2, c: Pos2, color: Color32) {
-    let (iw, ih) = (image.width() as f32, image.height() as f32);
-    let min_x = a.x.min(b.x).min(c.x).floor() as i32;
-    let max_x = a.x.max(b.x).max(c.x).ceil() as i32;
-    let min_y = a.y.min(b.y).min(c.y).floor() as i32;
-    let max_y = a.y.max(b.y).max(c.y).ceil() as i32;
     let rgba = Rgba([color.r(), color.g(), color.b(), color.a()]);
-
     let d1 = b - a;
     let d2 = c - a;
     let denom = d1.x * d2.y - d1.y * d2.x;
     if denom.abs() < 1e-6 {
         return;
     }
-
-    for y in min_y..max_y {
-        for x in min_x..max_x {
-            if x < 0 || y < 0 || (x as f32) >= iw || (y as f32) >= ih {
-                continue;
-            }
-            let p = pos2(x as f32 + 0.5, y as f32 + 0.5);
-            let q = p - a;
+    fill_box_aa(
+        image,
+        (a.x.min(b.x).min(c.x) - 1.0).floor() as i32,
+        (a.y.min(b.y).min(c.y) - 1.0).floor() as i32,
+        (a.x.max(b.x).max(c.x) + 1.0).ceil() as i32,
+        (a.y.max(b.y).max(c.y) + 1.0).ceil() as i32,
+        rgba,
+        move |px, py| {
+            let q = pos2(px, py) - a;
             let u = (q.x * d2.y - q.y * d2.x) / denom;
             let v = (d1.x * q.y - d1.y * q.x) / denom;
-            if u >= 0.0 && v >= 0.0 && u + v <= 1.0 {
-                blend_pixel(image, x as u32, y as u32, rgba);
-            }
-        }
-    }
+            u >= 0.0 && v >= 0.0 && u + v <= 1.0
+        },
+    );
 }
 
 #[cfg(test)]
@@ -220,6 +259,67 @@ mod tests {
                 "width {width} rendered {run} px"
             );
         }
+    }
+
+    /// True when `image` holds at least one pixel blended between the black
+    /// background and the full white stroke — the signature of edge coverage.
+    fn has_partial(image: &RgbaImage) -> bool {
+        image
+            .pixels()
+            .any(|p| p.0[0] > 0 && p.0[0] < 255)
+    }
+
+    #[test]
+    fn line_edges_are_antialiased() {
+        let mut image = blank(40, 40);
+        draw_line_on_image(
+            &mut image,
+            pos2(4.0, 4.0),
+            pos2(36.0, 20.0),
+            Color32::WHITE,
+            3.0,
+        );
+        assert!(
+            has_partial(&image),
+            "line edge pixels should have partial coverage"
+        );
+    }
+
+    #[test]
+    fn filled_circle_edges_are_antialiased() {
+        let mut image = blank(40, 40);
+        fill_circle_on_image(&mut image, pos2(20.0, 20.0), 10.0, Color32::WHITE);
+        assert!(
+            has_partial(&image),
+            "circle edge pixels should have partial coverage"
+        );
+    }
+
+    #[test]
+    fn triangle_edges_are_antialiased() {
+        let mut image = blank(40, 40);
+        fill_triangle_on_image(
+            &mut image,
+            pos2(4.0, 34.0),
+            pos2(20.0, 4.0),
+            pos2(36.0, 34.0),
+            Color32::WHITE,
+        );
+        assert!(
+            has_partial(&image),
+            "triangle edge pixels should have partial coverage"
+        );
+    }
+
+    #[test]
+    fn filled_circle_interior_stays_opaque() {
+        let mut image = blank(40, 40);
+        fill_circle_on_image(&mut image, pos2(20.0, 20.0), 10.0, Color32::WHITE);
+        assert_eq!(
+            image.get_pixel(20, 20).0[0],
+            255,
+            "the circle interior must stay fully opaque"
+        );
     }
 }
 
