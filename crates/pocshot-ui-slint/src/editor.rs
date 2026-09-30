@@ -81,6 +81,8 @@ pub struct Editor {
     /// Active snap guide coordinates (image px) to draw while dragging.
     snap_x: Option<f32>,
     snap_y: Option<f32>,
+    /// When the current snap guide was last hit, so it can flash and fade.
+    snap_updated: Option<std::time::Instant>,
     ocr_rx: Option<mpsc::Receiver<Vec<TextRegion>>>,
     ocr_regions: Vec<TextRegion>,
     /// Merged paragraph-level regions (from `ocr_regions`), used for text-region
@@ -116,6 +118,10 @@ const REDACT_VERTICAL_PADDING: f32 = 1.0;
 /// click (fit the one text block under the cursor); anything larger is a drag
 /// (fit every block the drag touches).
 const TEXT_CLICK_SLOP: f32 = 8.0;
+
+/// Snap guide flash: the guide is drawn only while a drag is in progress, and
+/// fades out this long after the last snap update.
+const SNAP_GUIDE_FADE: std::time::Duration = std::time::Duration::from_millis(150);
 
 /// Whether a text-region gesture is a click rather than a multi-block drag.
 fn is_click_gesture(drag: Rect) -> bool {
@@ -323,6 +329,7 @@ impl Editor {
             snap_enabled,
             snap_x: None,
             snap_y: None,
+            snap_updated: None,
             ocr_rx: None,
             ocr_regions: Vec::new(),
             ocr_merged: Vec::new(),
@@ -394,10 +401,12 @@ impl Editor {
             let timer = slint::Timer::default();
             timer.start(
                 slint::TimerMode::Repeated,
-                std::time::Duration::from_millis(250),
+                std::time::Duration::from_millis(50),
                 move || {
                     if let Some(editor) = weak.upgrade() {
-                        editor.borrow_mut().poll_ocr();
+                        let mut editor = editor.borrow_mut();
+                        editor.poll_ocr_work();
+                        editor.refresh_snap_guide();
                     }
                 },
             );
@@ -600,12 +609,22 @@ impl Editor {
             );
             self.snap_x = ((snapped_x - raw.x).abs() > 0.01).then_some(snapped_x);
             self.snap_y = ((snapped_y - raw.y).abs() > 0.01).then_some(snapped_y);
+            if self.snap_x.is_some() || self.snap_y.is_some() {
+                self.snap_updated = Some(std::time::Instant::now());
+            }
             Pos2::new(snapped_x, snapped_y)
         } else {
             self.snap_x = None;
             self.snap_y = None;
+            self.snap_updated = None;
             raw
         };
+
+        // The brief guide is shown only while a drag is actually in progress;
+        // update_hover/refresh_chrome below would otherwise leave a stale one.
+        if !dragging {
+            self.snap_updated = None;
+        }
 
         self.update_hover(pos);
         self.ui.set_tool_cursor(tool_cursor(self.tool));
@@ -722,6 +741,7 @@ impl Editor {
 
         self.refresh_selection();
         self.refresh_preview();
+        self.refresh_snap_guide();
         self.refresh_toolbar();
         self.refresh_chrome();
     }
@@ -1236,7 +1256,7 @@ impl Editor {
     }
 
     /// Poll for OCR results (called from a Slint timer).
-    fn poll_ocr(&mut self) {
+    fn poll_ocr_work(&mut self) {
         let Some(rx) = &self.ocr_rx else {
             return;
         };
@@ -1472,35 +1492,61 @@ impl Editor {
         let y1 = bbox.max.y.ceil().min(size.y) as u32;
         let mut image = imageops::crop_imm(&self.composited, x0, y0, x1 - x0, y1 - y0).to_image();
         shape.render(&mut image, self.color, self.width, Pos2::new(x0 as f32, y0 as f32));
-        // Show the guides the current position is snapping to.
-        let guide = Color32::from_rgb(255, 51, 102);
-        let (w, h) = ((x1 - x0) as f32, (y1 - y0) as f32);
-        if let Some(sx) = self.snap_x {
-            let gx = sx - x0 as f32;
-            if gx >= 0.0 && gx <= w {
-                pocshot_annotate::raster::draw_line_on_image(
-                    &mut image,
-                    Pos2::new(gx, 0.0),
-                    Pos2::new(gx, h),
-                    guide,
-                    1.0,
-                );
-            }
-        }
-        if let Some(sy) = self.snap_y {
-            let gy = sy - y0 as f32;
-            if gy >= 0.0 && gy <= h {
-                pocshot_annotate::raster::draw_line_on_image(
-                    &mut image,
-                    Pos2::new(0.0, gy),
-                    Pos2::new(w, gy),
-                    guide,
-                    1.0,
-                );
-            }
-        }
 
         self.publish_preview(image, x0, y0, x1, y1);
+    }
+
+    /// Briefly overlay the active snap guides on the composited image, spanning
+    /// the full capture width/height (egui's "brief snap indicators"). Fades
+    /// out `SNAP_GUIDE_FADE` after the last snap update.
+    fn refresh_snap_guide(&mut self) {
+        let Some(updated) = self.snap_updated else {
+            self.ui.set_snap_guide_visible(false);
+            return;
+        };
+        let dragging = self.selecting
+            || self.moving_selection
+            || self.resizing.is_some()
+            || self.dragging_shape
+            || self.effect_rect.is_some();
+        if !dragging {
+            self.snap_updated = None;
+            self.ui.set_snap_guide_visible(false);
+            return;
+        }
+        let age = updated.elapsed();
+        if age >= SNAP_GUIDE_FADE {
+            self.snap_updated = None;
+            self.ui.set_snap_guide_visible(false);
+            return;
+        }
+        // Fade out over the tail of the window (egui draws it solid).
+        let alpha = (255.0 * (1.0 - age.as_secs_f32() / SNAP_GUIDE_FADE.as_secs_f32()))
+            .clamp(0.0, 255.0) as u8;
+        let near = self.settings.theme.colors.snap_line_near;
+        let color = Color32::from_rgba_unmultiplied(near.r(), near.g(), near.b(), alpha);
+        let (w, h) = (self.size().x, self.size().y);
+        let mut guide = (*self.base).clone();
+        if let Some(sx) = self.snap_x {
+            pocshot_annotate::raster::draw_line_on_image(
+                &mut guide,
+                Pos2::new(sx, 0.0),
+                Pos2::new(sx, h),
+                color,
+                1.0,
+            );
+        }
+        if let Some(sy) = self.snap_y {
+            pocshot_annotate::raster::draw_line_on_image(
+                &mut guide,
+                Pos2::new(0.0, sy),
+                Pos2::new(w, sy),
+                color,
+                1.0,
+            );
+        }
+        self.ui.set_snap_guide(to_slint_image(&guide));
+        self.ui.set_snap_guide_visible(true);
     }
 
     fn publish_preview(&self, image: RgbaImage, x0: u32, y0: u32, x1: u32, y1: u32) {

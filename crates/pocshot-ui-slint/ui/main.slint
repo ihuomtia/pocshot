@@ -148,6 +148,9 @@ export component EditorWindow inherits Window {
     in property <float> hover-ny;
     in property <float> hover-nw;
     in property <float> hover-nh;
+    // Brief full-length snap guide overlay (fades shortly after a snap).
+    in property <image> snap-guide;
+    in property <bool> snap-guide-visible: false;
     // Hint bar: a status/tool line plus contextual shortcut chips.
     in property <string> status: "";
     in property <string> hint-primary: "";
@@ -223,6 +226,16 @@ export component EditorWindow inherits Window {
         width: root.hover-nw * root.width;
         height: root.hover-nh * root.height;
         background: Theme.ocr-hover;
+    }
+
+    // Brief snap guide, spanning the full capture width/height.
+    Image {
+        visible: root.snap-guide-visible;
+        source: root.snap-guide;
+        x: root.shot-nx * root.width;
+        y: root.shot-ny * root.height;
+        width: root.shot-nw * root.width;
+        height: root.shot-nh * root.height;
     }
 
     Image {
