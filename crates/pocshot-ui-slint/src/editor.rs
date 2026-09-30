@@ -83,6 +83,9 @@ pub struct Editor {
     snap_y: Option<f32>,
     ocr_rx: Option<mpsc::Receiver<Vec<TextRegion>>>,
     ocr_regions: Vec<TextRegion>,
+    /// Merged paragraph-level regions (from `ocr_regions`), used for text-region
+    /// fitting and the hover highlight, as egui does.
+    ocr_merged: Vec<TextRegion>,
     /// Image-space origin of the crop the OCR regions are relative to.
     ocr_origin: Pos2,
     show_ocr: bool,
@@ -174,22 +177,54 @@ fn shape_bounds(shape: &Shape) -> Option<Rect> {
     }
 }
 
-/// Union of the text `regions` that intersect `drag`, padded for the tool.
-/// `None` when nothing intersects.
-fn text_region_border(regions: &[Rect], drag: Rect, kind: ToolKind) -> Option<Rect> {
-    let mut union: Option<Rect> = None;
+/// Union of the text `regions` that intersect `drag`, grown by `padding`,
+/// clamped to the image and — when `selection` is given — restricted to it, so
+/// a text box extending past the selected region never produces a border
+/// outside it. `None` when nothing was touched or the result is empty.
+/// Ports egui's `app::text_border::text_border_rect`.
+fn text_border_rect(
+    drag: Rect,
+    regions: &[Rect],
+    image_size: Vec2,
+    padding: Vec2,
+    selection: Option<Rect>,
+) -> Option<Rect> {
+    let mut min = Pos2::new(f32::INFINITY, f32::INFINITY);
+    let mut max = Pos2::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
+    let mut any = false;
+
     for region in regions {
-        if region.intersects(drag) {
-            union = Some(match union {
-                Some(current) => current.union(*region),
-                None => *region,
-            });
+        if !region.intersects(drag) {
+            continue;
+        }
+        any = true;
+        min = min.min(region.min);
+        max = max.max(region.max);
+    }
+
+    if !any {
+        return None;
+    }
+
+    let mut border = Rect::from_min_max(
+        Pos2::new(
+            (min.x - padding.x).clamp(0.0, image_size.x),
+            (min.y - padding.y).clamp(0.0, image_size.y),
+        ),
+        Pos2::new(
+            (max.x + padding.x).clamp(0.0, image_size.x),
+            (max.y + padding.y).clamp(0.0, image_size.y),
+        ),
+    );
+
+    if let Some(sel) = selection {
+        border = border.intersect(sel);
+        if border.width() < 1.0 || border.height() < 1.0 {
+            return None;
         }
     }
-    union.map(|rect| match kind {
-        ToolKind::Redact => rect.expand2(Vec2::new(0.0, REDACT_VERTICAL_PADDING)),
-        _ => rect.expand(TEXT_BORDER_PADDING),
-    })
+
+    Some(border)
 }
 
 /// Toolbar order; index ↔ `ToolKind`.
@@ -269,6 +304,7 @@ impl Editor {
             snap_y: None,
             ocr_rx: None,
             ocr_regions: Vec::new(),
+            ocr_merged: Vec::new(),
             ocr_origin: Pos2::ZERO,
             show_ocr: false,
             _timer: slint::Timer::default(),
@@ -389,6 +425,13 @@ impl Editor {
         theme.set_panel_bg(to_slint_color(colors.panel_bg));
         theme.set_panel_border(to_slint_color(colors.panel_border));
         theme.set_control_track(to_slint_color(colors.control_track));
+        let ocr_box = colors.ocr_box;
+        theme.set_ocr_hover(slint::Color::from_argb_u8(
+            40,
+            ocr_box.r(),
+            ocr_box.g(),
+            ocr_box.b(),
+        ));
         theme.set_icon_fg_idle(to_slint_color(colors.icon_fg_idle));
         theme.set_icon_fg_active(to_slint_color(colors.icon_fg_active));
         theme.set_icon_fg_disabled(to_slint_color(colors.icon_fg_disabled));
@@ -515,6 +558,7 @@ impl Editor {
             || self.dragging_shape
             || self.effect_rect.is_some();
         if !dragging && self.pointer_in_toolbar(nx, ny) {
+            self.hide_hover();
             return;
         }
         self.status = None;
@@ -541,6 +585,8 @@ impl Editor {
             self.snap_y = None;
             raw
         };
+
+        self.update_hover(pos);
 
         match phase {
             0 => {
@@ -616,28 +662,22 @@ impl Editor {
                 } else if self.dragging_shape {
                     self.dragging_shape = false;
                     if let Some(shape) = self.current.take() {
-                        let mut shape = shape;
-                        // Text tools snap their box to the detected text regions.
-                        if matches!(shape.kind(), ToolKind::Redact | ToolKind::HighlightText)
-                            && !self.ocr_regions.is_empty()
-                        {
-                            let drag = shape_bounds(&shape).unwrap_or(Rect::NOTHING);
-                            if let Some(border) =
-                                text_region_border(&self.text_regions(), drag, shape.kind())
-                            {
-                                shape.replace_rect(border);
+                        if matches!(self.tool, ToolKind::Redact | ToolKind::HighlightText) {
+                            // These tools are defined by the text they cover, so
+                            // they never commit a freehand rectangle.
+                            self.commit_text_region(shape);
+                        } else {
+                            if shape.kind() == ToolKind::Counter {
+                                self.counter += 1;
                             }
+                            self.checkpoint();
+                            self.annotations.push(Annotation {
+                                shape,
+                                color: self.color,
+                                width: self.width,
+                            });
+                            self.rebuild_composited();
                         }
-                        if shape.kind() == ToolKind::Counter {
-                            self.counter += 1;
-                        }
-                        self.checkpoint();
-                        self.annotations.push(Annotation {
-                            shape,
-                            color: self.color,
-                            width: self.width,
-                        });
-                        self.rebuild_composited();
                     }
                 }
             }
@@ -1117,6 +1157,8 @@ impl Editor {
         if self.show_ocr {
             self.show_ocr = false;
             self.ocr_regions.clear();
+            self.ocr_merged.clear();
+            self.hide_hover();
             self.settings.show_text_boxes = false;
             self.persist_settings();
             self.rebuild_composited();
@@ -1177,8 +1219,15 @@ impl Editor {
                     );
                 }
                 self.ocr_regions = regions.clone();
+                self.ocr_merged = pocshot_ocr::postprocess::merge_text_regions(
+                    regions,
+                    pocshot_ocr::postprocess::MergeConfig::default(),
+                );
                 self.show_ocr = true;
-                self.status = Some(format!("OCR: {} text regions", regions.len()));
+                self.status = Some(format!(
+                    "OCR: {} text regions",
+                    self.ocr_merged.len()
+                ));
                 self.rebuild_composited();
             }
             Err(mpsc::TryRecvError::Empty) => {}
@@ -1188,10 +1237,11 @@ impl Editor {
         }
     }
 
-    /// OCR regions in image space (already offset by the crop origin).
+    /// OCR regions in image space (already offset by the crop origin), merged
+    /// to paragraph level so a border/hover covers the whole text block.
     fn text_regions(&self) -> Vec<Rect> {
         let origin = self.ocr_origin;
-        self.ocr_regions
+        self.ocr_merged
             .iter()
             .map(|region| {
                 let r = region.rect;
@@ -1201,6 +1251,79 @@ impl Editor {
                 )
             })
             .collect()
+    }
+
+    /// Fit a Redact/Text-border drag to the OCR regions under it and commit the
+    /// result. These tools never commit a freehand rectangle (mirrors egui).
+    fn commit_text_region(&mut self, mut shape: Shape) {
+        let image = self.image_rect();
+        let selection = (!self.selection_is_full()).then(|| self.selection.intersect(image));
+        let padding = if self.tool == ToolKind::Redact {
+            Vec2::new(0.0, REDACT_VERTICAL_PADDING)
+        } else {
+            Vec2::splat(TEXT_BORDER_PADDING)
+        };
+        let drag = shape_bounds(&shape).unwrap_or(Rect::NOTHING);
+        match text_border_rect(
+            drag,
+            &self.text_regions(),
+            Vec2::new(image.width(), image.height()),
+            padding,
+            selection,
+        ) {
+            Some(border) => {
+                shape.replace_rect(border);
+                self.checkpoint();
+                self.annotations.push(Annotation {
+                    shape,
+                    color: self.color,
+                    width: self.width,
+                });
+                self.rebuild_composited();
+                self.status = Some(
+                    if self.tool == ToolKind::Redact {
+                        "Text redacted"
+                    } else {
+                        "Text border added"
+                    }
+                    .into(),
+                );
+            }
+            None if self.ocr_merged.is_empty() && !self.settings.ocr_enabled => {
+                self.status = Some("Enable text detection in Settings to frame text".into());
+            }
+            None => {
+                self.status = Some(
+                    if selection.is_some() {
+                        "No text detected inside the selection"
+                    } else {
+                        "No text detected in that area"
+                    }
+                    .into(),
+                );
+            }
+        }
+    }
+
+    /// Highlight the detected text region under `pos` (image space). Mirrors
+    /// egui's cursor hover fill.
+    fn update_hover(&self, pos: Pos2) {
+        for region in self.text_regions() {
+            if region.contains(pos) {
+                let (nx, ny, nw, nh) = self.image_to_norm(region);
+                self.ui.set_hover_nx(nx);
+                self.ui.set_hover_ny(ny);
+                self.ui.set_hover_nw(nw);
+                self.ui.set_hover_nh(nh);
+                self.ui.set_hover_visible(true);
+                return;
+            }
+        }
+        self.ui.set_hover_visible(false);
+    }
+
+    fn hide_hover(&self) {
+        self.ui.set_hover_visible(false);
     }
 
     /// Remove the topmost committed annotation under `pos` (eraser).
@@ -1612,34 +1735,118 @@ mod tests {
         assert!(crop_and_render(&base, &[], Rect::NOTHING).is_none());
     }
 
+    fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> Rect {
+        Rect::from_min_max(pos2(x0, y0), pos2(x1, y1))
+    }
+
     #[test]
-    fn text_region_border_unions_intersecting_regions() {
-        let regions = [
-            Rect::from_min_max(pos2(10.0, 10.0), pos2(50.0, 20.0)),
-            Rect::from_min_max(pos2(10.0, 25.0), pos2(60.0, 35.0)),
-            Rect::from_min_max(pos2(200.0, 200.0), pos2(250.0, 210.0)),
-        ];
-        let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0));
-        let border = text_region_border(&regions, drag, ToolKind::HighlightText).unwrap();
-        // Only the two intersecting regions are unioned, padded by 6.
+    fn text_border_unions_regions_inside_the_drag() {
+        let regions = [rect(10.0, 20.0, 50.0, 40.0), rect(60.0, 20.0, 90.0, 40.0)];
+        let drag = rect(0.0, 0.0, 100.0, 100.0);
+        let border = text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::splat(6.0),
+            None,
+        )
+        .unwrap();
+        assert_eq!(border.min, pos2(4.0, 14.0));
+        assert_eq!(border.max, pos2(96.0, 46.0));
+    }
+
+    #[test]
+    fn text_border_only_includes_intersecting_regions() {
+        let regions = [rect(10.0, 10.0, 40.0, 30.0), rect(150.0, 150.0, 190.0, 180.0)];
+        let drag = rect(0.0, 0.0, 50.0, 50.0);
+        let border = text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::splat(6.0),
+            None,
+        )
+        .unwrap();
         assert_eq!(border.min, pos2(4.0, 4.0));
-        assert_eq!(border.max, pos2(66.0, 41.0));
+        assert_eq!(border.max, pos2(46.0, 36.0));
     }
 
     #[test]
-    fn text_region_border_redact_pads_vertically_only() {
-        let regions = [Rect::from_min_max(pos2(10.0, 10.0), pos2(50.0, 20.0))];
-        let drag = Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0));
-        let border = text_region_border(&regions, drag, ToolKind::Redact).unwrap();
-        assert_eq!(border.min, pos2(10.0, 9.0));
-        assert_eq!(border.max, pos2(50.0, 21.0));
+    fn text_border_none_without_intersection() {
+        let regions = [rect(150.0, 150.0, 190.0, 180.0)];
+        let drag = rect(0.0, 0.0, 50.0, 50.0);
+        assert!(text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::splat(6.0),
+            None
+        )
+        .is_none());
     }
 
     #[test]
-    fn text_region_border_none_without_intersection() {
-        let regions = [Rect::from_min_max(pos2(10.0, 10.0), pos2(50.0, 20.0))];
-        let drag = Rect::from_min_max(pos2(200.0, 200.0), pos2(300.0, 300.0));
-        assert!(text_region_border(&regions, drag, ToolKind::HighlightText).is_none());
+    fn text_border_padding_is_clamped_to_the_image() {
+        let regions = [rect(0.0, 0.0, 5.0, 5.0)];
+        let drag = rect(0.0, 0.0, 10.0, 10.0);
+        let border = text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::splat(6.0),
+            None,
+        )
+        .unwrap();
+        assert_eq!(border.min, pos2(0.0, 0.0));
+        assert_eq!(border.max, pos2(11.0, 11.0));
+    }
+
+    #[test]
+    fn text_border_is_clamped_to_the_selection() {
+        // Text extends past the selection on every side; the border is cropped
+        // to the selection instead of spilling outside it.
+        let regions = [rect(0.0, 0.0, 100.0, 100.0)];
+        let drag = rect(0.0, 0.0, 200.0, 200.0);
+        let selection = rect(20.0, 30.0, 80.0, 90.0);
+        let border = text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::splat(6.0),
+            Some(selection),
+        )
+        .unwrap();
+        assert_eq!(border, selection);
+    }
+
+    #[test]
+    fn text_border_empty_intersection_with_selection_is_none() {
+        let regions = [rect(0.0, 0.0, 10.0, 10.0)];
+        let drag = rect(0.0, 0.0, 200.0, 200.0);
+        let selection = rect(100.0, 100.0, 150.0, 150.0);
+        assert!(text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::splat(6.0),
+            Some(selection)
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn text_border_redact_pads_one_pixel_top_and_bottom_only() {
+        let regions = [rect(10.0, 20.0, 90.0, 40.0)];
+        let drag = rect(0.0, 0.0, 100.0, 100.0);
+        let redact = text_border_rect(
+            drag,
+            &regions,
+            Vec2::new(200.0, 200.0),
+            Vec2::new(0.0, REDACT_VERTICAL_PADDING),
+            None,
+        )
+        .unwrap();
+        assert_eq!(redact, rect(10.0, 19.0, 90.0, 41.0));
     }
 
     fn pos2(x: f32, y: f32) -> Pos2 {

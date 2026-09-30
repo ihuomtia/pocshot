@@ -142,6 +142,12 @@ export component EditorWindow inherits Window {
     in property <float> sel-nh;
     in property <bool> sel-visible;
     in property <bool> sel-handles-visible: false;
+    // Hover highlight over a detected text region (normalised 0..1).
+    in property <bool> hover-visible: false;
+    in property <float> hover-nx;
+    in property <float> hover-ny;
+    in property <float> hover-nw;
+    in property <float> hover-nh;
     // Hint bar: a status/tool line plus contextual shortcut chips.
     in property <string> status: "";
     in property <string> hint-primary: "";
@@ -205,6 +211,16 @@ export component EditorWindow inherits Window {
         y: root.shot-ny * root.height;
         width: root.shot-nw * root.width;
         height: root.shot-nh * root.height;
+    }
+
+    // Soft fill over the detected text block under the cursor (egui parity).
+    Rectangle {
+        visible: root.hover-visible;
+        x: root.hover-nx * root.width;
+        y: root.hover-ny * root.height;
+        width: root.hover-nw * root.width;
+        height: root.hover-nh * root.height;
+        background: Theme.ocr-hover;
     }
 
     Image {
