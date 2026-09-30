@@ -1215,7 +1215,8 @@ impl Editor {
         if self.show_ocr {
             let color = Color32::from_rgb(0, 230, 255);
             let origin = self.ocr_origin;
-            for region in &self.ocr_regions {                let r = region.rect;
+            for region in &self.ocr_regions {
+                let r = region.rect;
                 let min = Pos2::new(r.x0 + origin.x, r.y0 + origin.y);
                 let max = Pos2::new(r.x1 + origin.x, r.y1 + origin.y);
                 for (a, b) in [
@@ -1346,11 +1347,13 @@ impl Editor {
         }
     }
 
-    /// OCR regions in image space (already offset by the crop origin), merged
-    /// to paragraph level so a border/hover covers the whole text block.
+    /// OCR regions in image space (already offset by the crop origin). These
+    /// are the individual detected boxes — the same geometry the overlay draws,
+    /// so the hover highlight and the text-region fit always coincide with the
+    /// box the user sees.
     fn text_regions(&self) -> Vec<Rect> {
         let origin = self.ocr_origin;
-        self.ocr_merged
+        self.ocr_regions
             .iter()
             .map(|region| {
                 let r = region.rect;
@@ -1402,7 +1405,7 @@ impl Editor {
                     .into(),
                 );
             }
-            None if self.ocr_merged.is_empty() && !self.settings.ocr_enabled => {
+            None if self.ocr_regions.is_empty() && !self.settings.ocr_enabled => {
                 self.status = Some("Enable text detection in Settings to frame text".into());
             }
             None => {
