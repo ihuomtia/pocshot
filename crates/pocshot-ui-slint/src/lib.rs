@@ -220,4 +220,70 @@ mod tests {
         assert_eq!(clamp_pin_size(120.4, 80.6), (120.0, 81.0));
         assert_eq!(clamp_pin_size(f32::INFINITY, f32::NAN), (16.0, 16.0));
     }
+
+    #[test]
+    fn icon_probe_renders_pixels() {
+        use slint::platform::software_renderer::{
+            MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType, TargetPixel,
+        };
+        use slint::platform::{Platform, PlatformError, WindowAdapter};
+        use std::rc::Rc;
+
+        #[derive(Clone, Copy, Default)]
+        struct Bright(u8);
+        impl TargetPixel for Bright {
+            fn blend(&mut self, color: PremultipliedRgbaColor) {
+                self.0 = self.0.max(color.red).max(color.green).max(color.blue);
+            }
+            fn from_rgb(r: u8, g: u8, b: u8) -> Self {
+                Self(r.max(g).max(b))
+            }
+        }
+
+        struct Probe(Rc<MinimalSoftwareWindow>);
+        impl Platform for Probe {
+            fn create_window_adapter(
+                &self,
+            ) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
+                Ok(self.0.clone())
+            }
+        }
+
+        let window =
+            MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
+        let _ = slint::platform::set_platform(Box::new(Probe(window.clone())));
+
+        // 1. The bare IconButton must draw its stroke.
+        window.set_size(slint::PhysicalSize::new(32, 32));
+        let ui = IconProbe::new().unwrap();
+        ui.show().unwrap();
+        let mut buffer = vec![Bright::default(); 32 * 32];
+        window.draw_if_needed(|renderer| {
+            renderer.render(&mut buffer, 32);
+        });
+        assert!(
+            buffer.iter().any(|p| p.0 > 180),
+            "IconButton drew no bright icon stroke pixels"
+        );
+
+        // 2. The real EditorWindow's toolbar must show its icons too.
+        window.set_size(slint::PhysicalSize::new(1400, 120));
+        let editor = EditorWindow::new().unwrap();
+        editor.set_toolbar_x(8.0);
+        editor.set_toolbar_y(8.0);
+        editor.set_toolbar_width(1321.0);
+        editor.set_toolbar_height(40.0);
+        editor.set_toolbar_wrapped(false);
+        editor.set_active_tool(0);
+        editor.show().unwrap();
+        let mut buffer = vec![Bright::default(); 1400 * 120];
+        window.draw_if_needed(|renderer| {
+            renderer.render(&mut buffer, 1400);
+        });
+        let icons_lit = buffer.iter().any(|p| p.0 > 180);
+        assert!(
+            icons_lit,
+            "EditorWindow toolbar drew no bright icon pixels (icons invisible in the real window)"
+        );
+    }
 }

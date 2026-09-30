@@ -100,7 +100,7 @@ pub fn load() -> AppSettings {
         return settings;
     };
     match serde_json::from_str::<AppSettings>(&text) {
-        Ok(s) => {
+        Ok(mut s) => {
             // Detect a pre-theme config (valid JSON but no `theme` key) and
             // write the de-serialized defaults back so the attribute is
             // persisted rather than living only in this process.
@@ -109,7 +109,9 @@ pub fn load() -> AppSettings {
                 .as_object()
                 .map(|o| o.contains_key("theme"))
                 .unwrap_or(false);
-            if !has_theme {
+            // Repair Lucide fields that deserialized as 0.0 (a `geometry`/
+            // `fonts` object written before they existed).
+            if s.theme.normalize() || !has_theme {
                 save(&s);
             }
             s
@@ -350,6 +352,39 @@ mod tests {
             std::fs::create_dir_all(config_dir()).unwrap();
             std::fs::write(config_path(), legacy).unwrap();
             assert!(!load().ocr_region_only);
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn zeroed_geometry_is_repaired_on_load() {
+        let dir = std::env::temp_dir().join(format!("pocshot-cfg-zero-{}", std::process::id()));
+        with_tmp_config(&dir, || {
+            std::fs::create_dir_all(config_dir()).unwrap();
+            // A config written by the buggy per-field-default code: the new
+            // Lucide numeric fields are present but zero.
+            let json = r##"{
+                "ocr_enabled": false, "show_text_boxes": false, "show_ocr_debug": false,
+                "ocr_confidence": 0.5, "ocr_models_dir": "", "snap_enabled": true,
+                "show_snap_lines": true, "copy_on_save": false, "annotation_stroke_width": 3.0,
+                "ocr_region_only": false,
+                "theme": {
+                    "colors": {},
+                    "geometry": { "toolbar_margin": 6.0, "icon_size": 0.0, "icon_stroke": 0.0,
+                                  "panel_radius": 0.0, "control_radius": 0.0, "toolbar_padding": 0.0 },
+                    "fonts": { "panel_title": 0.0, "section": 0.0, "row": 0.0, "shortcut": 0.0 }
+                }
+            }"##;
+            std::fs::write(config_path(), json).unwrap();
+            let s = load();
+            assert_eq!(s.theme.geometry.icon_size, 18.0);
+            assert_eq!(s.theme.geometry.icon_stroke, 1.75);
+            assert_eq!(s.theme.fonts.panel_title, 15.0);
+            assert_eq!(s.theme.fonts.row, 13.0);
+            // The repair was persisted, so it does not repeat every launch.
+            let raw = std::fs::read_to_string(config_path()).unwrap();
+            let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+            assert_eq!(value["theme"]["geometry"]["icon_size"].as_f64(), Some(18.0));
         });
         let _ = std::fs::remove_dir_all(&dir);
     }

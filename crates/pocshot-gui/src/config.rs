@@ -87,7 +87,7 @@ pub fn load() -> AppSettings {
         return settings;
     };
     match serde_json::from_str::<AppSettings>(&text) {
-        Ok(s) => {
+        Ok(mut s) => {
             // Detect a pre-theme config (valid JSON but no `theme` key) and
             // write the de-serialized defaults back so the attribute is
             // persisted rather than living only in this process.
@@ -96,7 +96,7 @@ pub fn load() -> AppSettings {
                 .as_object()
                 .map(|o| o.contains_key("theme"))
                 .unwrap_or(false);
-            if !has_theme {
+            if s.theme.normalize() || !has_theme {
                 save(&s);
             }
             s

@@ -182,13 +182,13 @@ pub struct Fonts {
     pub settings_label: f32,
     #[serde(default)]
     pub settings_helper: f32,
-    #[serde(default)]
+    #[serde(default = "dflt::panel_title")]
     pub panel_title: f32,
-    #[serde(default)]
+    #[serde(default = "dflt::section")]
     pub section: f32,
-    #[serde(default)]
+    #[serde(default = "dflt::row")]
     pub row: f32,
-    #[serde(default)]
+    #[serde(default = "dflt::shortcut")]
     pub shortcut: f32,
 }
 
@@ -269,19 +269,19 @@ pub struct Geometry {
     #[serde(default)]
     pub default_stroke_width: f32,
     /// Lucide icon edge length in logical px.
-    #[serde(default)]
+    #[serde(default = "dflt::icon_size")]
     pub icon_size: f32,
     /// Lucide stroke width (24px grid units).
-    #[serde(default)]
+    #[serde(default = "dflt::icon_stroke")]
     pub icon_stroke: f32,
     /// Card corner radius.
-    #[serde(default)]
+    #[serde(default = "dflt::panel_radius")]
     pub panel_radius: f32,
     /// Switch/slider corner radius.
-    #[serde(default)]
+    #[serde(default = "dflt::control_radius")]
     pub control_radius: f32,
     /// Toolbar inner padding.
-    #[serde(default)]
+    #[serde(default = "dflt::toolbar_padding")]
     pub toolbar_padding: f32,
 }
 
@@ -338,6 +338,74 @@ impl Theme {
 impl Default for Theme {
     fn default() -> Self {
         Self::builtin()
+    }
+}
+
+/// Per-field serde defaults. A bare `#[serde(default)]` on a numeric field
+/// yields `0.0` (that is, `f32::default()`), not the built-in value, so a
+/// `geometry`/`fonts` object written before a field existed needs its own
+/// default function. Mirrors `pocshot-config`.
+mod dflt {
+    pub fn icon_size() -> f32 {
+        18.0
+    }
+    pub fn icon_stroke() -> f32 {
+        1.75
+    }
+    pub fn panel_radius() -> f32 {
+        12.0
+    }
+    pub fn control_radius() -> f32 {
+        8.0
+    }
+    pub fn toolbar_padding() -> f32 {
+        8.0
+    }
+    pub fn panel_title() -> f32 {
+        15.0
+    }
+    pub fn section() -> f32 {
+        12.0
+    }
+    pub fn row() -> f32 {
+        13.0
+    }
+    pub fn shortcut() -> f32 {
+        11.0
+    }
+}
+
+impl Theme {
+    /// Repair a theme loaded from an older/partial `config.json`; mirrors
+    /// `pocshot_config::theme::Theme::normalize`.
+    pub fn normalize(&mut self) -> bool {
+        let b = Theme::builtin();
+        let mut changed = false;
+        macro_rules! fix_geom {
+            ($($f:ident),+ $(,)?) => {$(
+                if self.geometry.$f <= 0.0 {
+                    self.geometry.$f = b.geometry.$f;
+                    changed = true;
+                }
+            )+};
+        }
+        macro_rules! fix_font {
+            ($($f:ident),+ $(,)?) => {$(
+                if self.fonts.$f <= 0.0 {
+                    self.fonts.$f = b.fonts.$f;
+                    changed = true;
+                }
+            )+};
+        }
+        fix_geom!(
+            icon_size,
+            icon_stroke,
+            panel_radius,
+            control_radius,
+            toolbar_padding
+        );
+        fix_font!(panel_title, section, row, shortcut);
+        changed
     }
 }
 

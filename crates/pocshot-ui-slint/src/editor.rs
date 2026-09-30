@@ -505,7 +505,16 @@ impl Editor {
     }
 
     fn on_pointer(&mut self, nx: f32, ny: f32, phase: i32) {
-        if self.pointer_in_toolbar(nx, ny) {
+        // Ignore presses that land on the toolbar so its buttons work, but keep
+        // feeding move/release events to an in-progress gesture: a drag that
+        // ends over the toolbar must still finish (otherwise the selection
+        // never stops following the cursor).
+        let dragging = self.selecting
+            || self.moving_selection
+            || self.resizing.is_some()
+            || self.dragging_shape
+            || self.effect_rect.is_some();
+        if !dragging && self.pointer_in_toolbar(nx, ny) {
             return;
         }
         self.status = None;

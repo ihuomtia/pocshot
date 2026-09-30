@@ -182,13 +182,13 @@ pub struct Fonts {
     pub settings_label: f32,
     #[serde(default)]
     pub settings_helper: f32,
-    #[serde(default)]
+    #[serde(default = "dflt::panel_title")]
     pub panel_title: f32,
-    #[serde(default)]
+    #[serde(default = "dflt::section")]
     pub section: f32,
-    #[serde(default)]
+    #[serde(default = "dflt::row")]
     pub row: f32,
-    #[serde(default)]
+    #[serde(default = "dflt::shortcut")]
     pub shortcut: f32,
 }
 
@@ -269,19 +269,19 @@ pub struct Geometry {
     #[serde(default)]
     pub default_stroke_width: f32,
     /// Lucide icon edge length in logical px.
-    #[serde(default)]
+    #[serde(default = "dflt::icon_size")]
     pub icon_size: f32,
     /// Lucide stroke width (24px grid units).
-    #[serde(default)]
+    #[serde(default = "dflt::icon_stroke")]
     pub icon_stroke: f32,
     /// Card corner radius.
-    #[serde(default)]
+    #[serde(default = "dflt::panel_radius")]
     pub panel_radius: f32,
     /// Switch/slider corner radius.
-    #[serde(default)]
+    #[serde(default = "dflt::control_radius")]
     pub control_radius: f32,
     /// Toolbar inner padding.
-    #[serde(default)]
+    #[serde(default = "dflt::toolbar_padding")]
     pub toolbar_padding: f32,
 }
 
@@ -338,6 +338,77 @@ impl Theme {
 impl Default for Theme {
     fn default() -> Self {
         Self::builtin()
+    }
+}
+
+/// Per-field serde defaults. A bare `#[serde(default)]` on a numeric field
+/// yields `0.0` (that is, `f32::default()`), not the built-in value. When a
+/// `geometry`/`fonts` object already exists in `config.json` from before a
+/// field was introduced, the whole-object default never runs, so each such
+/// field needs its own default function.
+mod dflt {
+    pub fn icon_size() -> f32 {
+        18.0
+    }
+    pub fn icon_stroke() -> f32 {
+        1.75
+    }
+    pub fn panel_radius() -> f32 {
+        12.0
+    }
+    pub fn control_radius() -> f32 {
+        8.0
+    }
+    pub fn toolbar_padding() -> f32 {
+        8.0
+    }
+    pub fn panel_title() -> f32 {
+        15.0
+    }
+    pub fn section() -> f32 {
+        12.0
+    }
+    pub fn row() -> f32 {
+        13.0
+    }
+    pub fn shortcut() -> f32 {
+        11.0
+    }
+}
+
+impl Theme {
+    /// Repair a theme loaded from an older/partial `config.json`: Lucide fields
+    /// that deserialized as `0.0` (missing key in an existing `geometry`/`fonts`
+    /// object) are reset to the built-in value. Returns whether anything
+    /// changed so the caller can persist the repaired theme.
+    pub fn normalize(&mut self) -> bool {
+        let b = Theme::builtin();
+        let mut changed = false;
+        macro_rules! fix_geom {
+            ($($f:ident),+ $(,)?) => {$(
+                if self.geometry.$f <= 0.0 {
+                    self.geometry.$f = b.geometry.$f;
+                    changed = true;
+                }
+            )+};
+        }
+        macro_rules! fix_font {
+            ($($f:ident),+ $(,)?) => {$(
+                if self.fonts.$f <= 0.0 {
+                    self.fonts.$f = b.fonts.$f;
+                    changed = true;
+                }
+            )+};
+        }
+        fix_geom!(
+            icon_size,
+            icon_stroke,
+            panel_radius,
+            control_radius,
+            toolbar_padding
+        );
+        fix_font!(panel_title, section, row, shortcut);
+        changed
     }
 }
 
@@ -582,7 +653,7 @@ mod tests {
     }
 
     #[test]
-    fn partial_theme_fills_from_builtin() {
+    fn partial_geometry_fills_from_builtin() {
         let json = r##"{
             "colors": { "accent": "#00ff00" }
         }"##;
@@ -590,6 +661,49 @@ mod tests {
         assert_eq!(t.colors.accent, Color32::from_rgb(0, 255, 0));
         assert_eq!(t.colors.canvas_bg, Theme::builtin().colors.canvas_bg);
         assert_eq!(t.fonts.hint, Theme::builtin().fonts.hint);
+    }
+
+    #[test]
+    fn existing_geometry_object_fills_new_numeric_fields() {
+        // A `geometry` object written before the Lucide fields existed: the
+        // whole-object default does not apply, so each new field must carry its
+        // own default, not serde's 0.0.
+        let json = r##"{ "geometry": { "toolbar_margin": 6.0, "button_w": 34.0 } }"##;
+        let t: Theme = serde_json::from_str(json).unwrap();
+        assert_eq!(t.geometry.icon_size, 18.0);
+        assert_eq!(t.geometry.icon_stroke, 1.75);
+        assert_eq!(t.geometry.panel_radius, 12.0);
+        assert_eq!(t.geometry.control_radius, 8.0);
+        assert_eq!(t.geometry.toolbar_padding, 8.0);
+    }
+
+    #[test]
+    fn zeroed_new_fields_are_normalized() {
+        // A config that already persisted 0.0 (written by the buggy defaults)
+        // must be repaired at load time.
+        let mut t = Theme::builtin();
+        t.geometry.icon_size = 0.0;
+        t.geometry.icon_stroke = 0.0;
+        t.geometry.panel_radius = 0.0;
+        t.geometry.control_radius = 0.0;
+        t.geometry.toolbar_padding = 0.0;
+        t.fonts.panel_title = 0.0;
+        t.fonts.section = 0.0;
+        t.fonts.row = 0.0;
+        t.fonts.shortcut = 0.0;
+        assert!(t.normalize());
+        let b = Theme::builtin();
+        assert_eq!(t.geometry.icon_size, 18.0);
+        assert_eq!(t.geometry.icon_stroke, 1.75);
+        assert_eq!(t.geometry.panel_radius, b.geometry.panel_radius);
+        assert_eq!(t.geometry.control_radius, b.geometry.control_radius);
+        assert_eq!(t.geometry.toolbar_padding, b.geometry.toolbar_padding);
+        assert_eq!(t.fonts.panel_title, b.fonts.panel_title);
+        assert_eq!(t.fonts.section, b.fonts.section);
+        assert_eq!(t.fonts.row, b.fonts.row);
+        assert_eq!(t.fonts.shortcut, b.fonts.shortcut);
+        // Idempotent.
+        assert!(!t.normalize());
     }
 
     #[test]

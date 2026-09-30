@@ -571,6 +571,13 @@ export component EditorWindow inherits Window {
     }
 }
 
+/// Test probe: a single outlined icon on a black background, rendered by the
+/// offscreen `icon_probe_renders_pixels` test in `lib.rs`.
+export component IconProbe inherits Window {
+    background: #000000;
+    IconButton { x: 4px; y: 4px; icon: Icons.RotateCw; tooltip: "probe"; button-width: 32px; }
+}
+
 /// A pinned screenshot snippet: borderless, always-on-top, drag to move,
 /// right-click or Esc to close.
 export component PinWindow inherits Window {
