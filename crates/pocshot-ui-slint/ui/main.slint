@@ -154,6 +154,8 @@ export component EditorWindow inherits Window {
     in property <[string]> hint-chips;
     in property <int> active-tool: 0;
     in property <int> active-color: 0;
+    /// Pointer cursor, driven by Rust from the active tool.
+    in property <MouseCursor> tool-cursor: crosshair;
     // Fall back to fullscreen when no explicit placement is known.
     in property <bool> fullscreen: false;
     // Settings panel.
@@ -233,7 +235,7 @@ export component EditorWindow inherits Window {
     }
 
     ta := TouchArea {
-        mouse-cursor: crosshair;
+        mouse-cursor: root.tool-cursor;
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
                 root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 0);

@@ -112,6 +112,27 @@ pub struct Editor {
 const TEXT_BORDER_PADDING: f32 = 6.0;
 /// Redact boxes only pad vertically by one pixel.
 const REDACT_VERTICAL_PADDING: f32 = 1.0;
+/// A press-and-release that moved less than this (window px) in both axes is a
+/// click (fit the one text block under the cursor); anything larger is a drag
+/// (fit every block the drag touches).
+const TEXT_CLICK_SLOP: f32 = 8.0;
+
+/// Whether a text-region gesture is a click rather than a multi-block drag.
+fn is_click_gesture(drag: Rect) -> bool {
+    drag.width() <= TEXT_CLICK_SLOP && drag.height() <= TEXT_CLICK_SLOP
+}
+
+/// The pointer cursor for the active tool.
+fn tool_cursor(tool: ToolKind) -> slint::private_unstable_api::re_exports::MouseCursorInner {
+    use slint::private_unstable_api::re_exports::{BuiltInMouseCursor, MouseCursorInner};
+    let cursor = match tool {
+        // Select has its own per-region move/resize cursors.
+        ToolKind::Select => BuiltInMouseCursor::Default,
+        ToolKind::Text => BuiltInMouseCursor::Text,
+        _ => BuiltInMouseCursor::Crosshair,
+    };
+    MouseCursorInner::BuiltIn(cursor)
+}
 /// Shortcut reference shown by the help overlay.
 pub(crate) fn help_rows() -> Vec<HelpRow> {
     let row = |keys: &str, text: &str| HelpRow {
@@ -587,6 +608,7 @@ impl Editor {
         };
 
         self.update_hover(pos);
+        self.ui.set_tool_cursor(tool_cursor(self.tool));
 
         match phase {
             0 => {
@@ -619,6 +641,7 @@ impl Editor {
                     self.effect_anchor = pos;
                     self.effect_rect = Some(Rect::from_two_pos(pos, pos));
                 } else if let Some(shape) = Shape::begin(self.tool, pos) {
+                    self.effect_anchor = pos;
                     self.current = Some(shape);
                     self.dragging_shape = true;
                 }
@@ -660,12 +683,25 @@ impl Editor {
                 } else if self.tool == ToolKind::Text {
                     // Text stays editable until Enter/Esc; mouse-up commits nothing.
                 } else if self.dragging_shape {
+                    // A short press-and-release is a click: fit the one block
+                    // under the cursor. A real drag fits every block it covers.
+                    let click_pos = (self.tool == ToolKind::Redact
+                        || self.tool == ToolKind::HighlightText)
+                        .then_some(self.effect_anchor);
                     self.dragging_shape = false;
                     if let Some(shape) = self.current.take() {
                         if matches!(self.tool, ToolKind::Redact | ToolKind::HighlightText) {
                             // These tools are defined by the text they cover, so
                             // they never commit a freehand rectangle.
-                            self.commit_text_region(shape);
+                            let drag = shape_bounds(&shape).unwrap_or(Rect::NOTHING);
+                            let target = if is_click_gesture(drag) {
+                                // Point rect at the anchor, so only the block
+                                // under the cursor is picked.
+                                click_pos.map(|p| Rect::from_two_pos(p, p))
+                            } else {
+                                Some(drag)
+                            };
+                            self.commit_text_region(shape, target);
                         } else {
                             if shape.kind() == ToolKind::Counter {
                                 self.counter += 1;
@@ -1253,9 +1289,14 @@ impl Editor {
             .collect()
     }
 
-    /// Fit a Redact/Text-border drag to the OCR regions under it and commit the
-    /// result. These tools never commit a freehand rectangle (mirrors egui).
-    fn commit_text_region(&mut self, mut shape: Shape) {
+    /// Fit a Redact/Text-border gesture to OCR regions and commit the result.
+    /// `target` is the image-space rect to fit to: the drag rect for a
+    /// multi-block drag, or a zero-size point at the cursor for a click. These
+    /// tools never commit a freehand rectangle (mirrors egui).
+    fn commit_text_region(&mut self, mut shape: Shape, target: Option<Rect>) {
+        let Some(drag) = target else {
+            return;
+        };
         let image = self.image_rect();
         let selection = (!self.selection_is_full()).then(|| self.selection.intersect(image));
         let padding = if self.tool == ToolKind::Redact {
@@ -1263,7 +1304,6 @@ impl Editor {
         } else {
             Vec2::splat(TEXT_BORDER_PADDING)
         };
-        let drag = shape_bounds(&shape).unwrap_or(Rect::NOTHING);
         match text_border_rect(
             drag,
             &self.text_regions(),
@@ -1737,6 +1777,30 @@ mod tests {
 
     fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> Rect {
         Rect::from_min_max(pos2(x0, y0), pos2(x1, y1))
+    }
+
+    #[test]
+    fn point_gesture_is_a_click_within_the_threshold() {
+        assert!(is_click_gesture(Rect::from_two_pos(
+            pos2(10.0, 10.0),
+            pos2(13.0, 12.0)
+        )));
+        assert!(is_click_gesture(Rect::from_two_pos(
+            pos2(10.0, 10.0),
+            pos2(10.0, 10.0)
+        )));
+    }
+
+    #[test]
+    fn larger_gesture_is_a_drag() {
+        assert!(!is_click_gesture(Rect::from_two_pos(
+            pos2(10.0, 10.0),
+            pos2(19.0, 10.0)
+        )));
+        assert!(!is_click_gesture(Rect::from_two_pos(
+            pos2(10.0, 10.0),
+            pos2(10.0, 40.0)
+        )));
     }
 
     #[test]
