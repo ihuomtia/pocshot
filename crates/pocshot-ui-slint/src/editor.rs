@@ -13,7 +13,10 @@ use pocshot_annotate::{
 };
 use pocshot_ocr::TextRegion;
 use pocshot_snap::SnapLines;
-use slint::{ComponentHandle as _, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
+use slint::{
+    ComponentHandle as _, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel,
+};
+use slint::private_unstable_api::re_exports::MouseCursorInner;
 
 use crate::platform;
 use crate::{EditorWindow, HelpRow, Theme};
@@ -106,6 +109,8 @@ pub struct Editor {
     help_visible: bool,
     /// Transient status message shown in the hint bar.
     status: Option<String>,
+    /// Message shown in the settings panel's error/status line.
+    error_text: String,
     /// Toolbar rect in window pixels (for hit-testing).
     toolbar_rect: Rect,
 }
@@ -129,7 +134,7 @@ fn is_click_gesture(drag: Rect) -> bool {
 }
 
 /// The pointer cursor for the active tool.
-fn tool_cursor(tool: ToolKind) -> slint::private_unstable_api::re_exports::MouseCursorInner {
+fn tool_cursor(tool: ToolKind) -> MouseCursorInner {
     use slint::private_unstable_api::re_exports::{BuiltInMouseCursor, MouseCursorInner};
     let cursor = match tool {
         // Select has its own per-region move/resize cursors.
@@ -345,6 +350,7 @@ impl Editor {
             ocr_confidence: ocr_confidence.clamp(0.1, 0.95),
             help_visible: false,
             status: None,
+            error_text: String::new(),
             toolbar_rect: Rect::NOTHING,
         }));
 
@@ -800,6 +806,11 @@ impl Editor {
             }
             return;
         }
+        if let Some(v) = action.strip_prefix("models-dir:") {
+            self.settings.ocr_models_dir = v.to_string();
+            self.persist_settings();
+            return;
+        }
         match action {
             "width-" => {
                 self.width = (self.width - 1.0).max(1.0);
@@ -911,9 +922,50 @@ impl Editor {
                 self.persist_settings();
                 self.refresh_chrome();
             }
+            "ocr-boxes" => {
+                self.settings.show_text_boxes = !self.settings.show_text_boxes;
+                self.show_ocr = self.settings.show_text_boxes;
+                self.persist_settings();
+                self.rebuild_composited();
+                self.refresh_chrome();
+            }
+            "ocr-debug" => {
+                self.settings.show_ocr_debug = !self.settings.show_ocr_debug;
+                self.persist_settings();
+                self.rebuild_composited();
+                self.refresh_chrome();
+            }
+            "ocr-region-only" => {
+                self.settings.ocr_region_only = !self.settings.ocr_region_only;
+                self.persist_settings();
+                self.refresh_chrome();
+            }
+            "reload-models" => {
+                self.settings.ocr_models_dir = String::new();
+                self.persist_settings();
+                self.refresh_chrome();
+            }
+            "download-models" => self.download_models(),
             "quit" => crate::quit_event_loop(),
             _ => {}
         }
+    }
+
+    /// Ensure the OCR models exist locally (downloading them when needed) and
+    /// report the outcome in the panel's error line.
+    fn download_models(&mut self) {
+        let dir = pocshot_config::config::ocr_models_dir(&self.settings.ocr_models_dir);
+        match pocshot_ocr::models::ensure_models(&dir) {
+            Ok((detection, _)) => {
+                self.error_text = format!("Models ready in {}", dir.display());
+                log::info!("OCR models ready at {} ({})", dir.display(), detection.display());
+            }
+            Err(error) => {
+                self.error_text = format!("Model download failed: {error}");
+                log::warn!("model download failed: {error:#}");
+            }
+        }
+        self.ui.set_error_text(self.error_text.clone().into());
     }
 
     /// Selection rect in window pixels.
@@ -1589,6 +1641,18 @@ impl Editor {
         self.ui.set_auto_ocr_value(
             if self.settings.ocr_enabled { "on" } else { "off" }.into(),
         );
+        self.ui.set_ocr_boxes_value(
+            if self.settings.show_text_boxes { "on" } else { "off" }.into(),
+        );
+        self.ui.set_ocr_debug_value(
+            if self.settings.show_ocr_debug { "on" } else { "off" }.into(),
+        );
+        self.ui.set_ocr_region_only_value(
+            if self.settings.ocr_region_only { "on" } else { "off" }.into(),
+        );
+        self.ui
+            .set_models_dir(self.settings.ocr_models_dir.clone().into());
+        self.ui.set_error_text(self.error_text.clone().into());
         if self.typing_text {
             self.ui
                 .set_status("Type text · Enter commit · Esc cancel".into());

@@ -177,6 +177,11 @@ export component EditorWindow inherits Window {
     in property <int> stroke-width: 3;
     in property <string> ocr-confidence-value: "0.50";
     in property <float> ocr-confidence: 0.5;
+    in property <string> ocr-boxes-value: "on";
+    in property <string> ocr-debug-value: "off";
+    in property <string> ocr-region-only-value: "off";
+    in property <string> models-dir: "";
+    in property <string> error-text: "";
     // Help overlay.
     in property <bool> help-visible: false;
     in property <[HelpRow]> help-rows;
@@ -431,8 +436,11 @@ export component EditorWindow inherits Window {
                 Switch { label: "Snapping"; checked: root.snap-value == "on"; toggled => { root.action("snap"); } }
                 Switch { label: "Show guides"; checked: root.guides-value == "on"; toggled => { root.action("guides"); } }
 
-                SectionLabel { icon: Icons.ScanText; text: "OCR"; }
-                Switch { label: "Auto OCR on capture"; checked: root.auto-ocr-value == "on"; toggled => { root.action("auto-ocr"); } }
+                SectionLabel { icon: Icons.ScanText; text: "OCR / Text Detection"; }
+                Switch { label: "Enable text detection"; checked: root.auto-ocr-value == "on"; toggled => { root.action("auto-ocr"); } }
+                Switch { label: "Show text bounding boxes"; checked: root.ocr-boxes-value == "on"; toggled => { root.action("ocr-boxes"); } }
+                Switch { label: "Show OCR debug zones"; checked: root.ocr-debug-value == "on"; toggled => { root.action("ocr-debug"); } }
+                Switch { label: "Detect text only in selection"; checked: root.ocr-region-only-value == "on"; toggled => { root.action("ocr-region-only"); } }
                 HorizontalLayout {
                     height: 28px;
                     spacing: 8px;
@@ -448,6 +456,38 @@ export component EditorWindow inherits Window {
                         committed(v) => { root.action("ocr-confidence-set:" + v); }
                     }
                     Text { text: root.ocr-confidence-value; color: #ffffff; font-size: 13px; width: 40px; horizontal-alignment: center; vertical-alignment: center; }
+                }
+                Text { text: "Models dir"; color: Theme.hint-text; font-size: 13px; }
+                path-input := Rectangle {
+                    width: 100%;
+                    height: 28px;
+                    border-radius: 6px;
+                    background: Theme.control-track;
+                    TextInput {
+                        x: 8px;
+                        y: 4px;
+                        width: parent.width - 16px;
+                        height: 20px;
+                        text: root.models-dir;
+                        color: #ffffff;
+                        font-size: 12px;
+                        single-line: true;
+                        edited => { root.action("models-dir:" + self.text); }
+                    }
+                }
+                HorizontalLayout {
+                    height: 30px;
+                    spacing: 8px;
+                    alignment: start;
+                    IconButton { icon: Icons.Download; tooltip: "Download OCR models now"; shortcut: "ocrs .rten"; button-width: 32px; tooltip-below: true; clicked => { root.action("download-models"); } }
+                    Text { text: "Models auto-download on first use (ocrs .rten)"; color: Theme.text-faint; font-size: 11px; vertical-alignment: center; }
+                }
+                if (root.error-text != "") : Text {
+                    width: 100%;
+                    text: root.error-text;
+                    color: #ff6b6b;
+                    font-size: 11px;
+                    wrap: word-wrap;
                 }
 
                 SectionLabel { icon: Icons.Pen; text: "Annotations"; }
@@ -485,6 +525,12 @@ export component EditorWindow inherits Window {
                     IconButton { icon: Icons.RotateCw; tooltip: "Reload theme"; button-width: 32px; tooltip-below: true; clicked => { root.action("reload-theme"); } }
                     Text { text: "re-reads config.json"; color: Theme.text-faint; font-size: 11px; vertical-alignment: center; }
                 }
+
+                SectionLabel { icon: Icons.Settings; text: "Debug"; }
+                Switch { label: "Show all snap lines"; checked: root.guides-value == "on"; toggled => { root.action("guides"); } }
+                Switch { label: "Enable snapping"; checked: root.snap-value == "on"; toggled => { root.action("snap"); } }
+                Text { text: "Hold Shift to temporarily disable snapping"; color: Theme.text-faint; font-size: 11px; wrap: word-wrap; }
+                Text { text: "Press Esc to cancel or close"; color: Theme.text-faint; font-size: 11px; }
             }
         }
     }
