@@ -1,0 +1,744 @@
+//! Pocshot editor window (Slint). The view is deliberately dumb: it shows the
+//! captured image, a committed-annotations overlay, a live preview image, the
+//! selection rectangle and the toolbar, and forwards events to Rust. All
+//! editing logic lives in `lib.rs`/`editor.rs`.
+
+import { Icons, IconDisplay } from "icons.slint";
+import { IconButton, Swatch, Sep, Switch, ValueSlider, SectionLabel, HelpRow } from "controls.slint";
+import { Theme } from "theme.slint";
+export { Theme }
+
+component SelHandle inherits Rectangle {
+    in property <bool> show: false;
+    in property <length> hx;
+    in property <length> hy;
+    in property <length> win-w: 1px;
+    in property <length> win-h: 1px;
+    in property <MouseCursor> cursor: default;
+    callback pointer(float, float, int);
+
+    visible: root.show;
+    x: root.hx - 4px;
+    y: root.hy - 4px;
+    width: 8px;
+    height: 8px;
+    background: Theme.handle;
+    border-color: #222222;
+    border-width: 1px;
+
+    ta := TouchArea {
+        mouse-cursor: root.cursor;
+        pointer-event(e) => {
+            // Coordinates are relative to this handle; add its own origin to get
+            // window coordinates.
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.pointer((root.hx - 4px + ta.mouse-x) / root.win-w, (root.hy - 4px + ta.mouse-y) / root.win-h, 0);
+            }
+            if (e.kind == PointerEventKind.move) {
+                root.pointer((root.hx - 4px + ta.mouse-x) / root.win-w, (root.hy - 4px + ta.mouse-y) / root.win-h, 1);
+            }
+            if (e.kind == PointerEventKind.up) {
+                root.pointer((root.hx - 4px + ta.mouse-x) / root.win-w, (root.hy - 4px + ta.mouse-y) / root.win-h, 2);
+            }
+        }
+    }
+}
+
+component ActionButtons inherits HorizontalLayout {
+    in property <bool> can-undo: false;
+    in property <bool> can-redo: false;
+    in property <bool> settings-visible: false;
+    in property <bool> help-visible: false;
+    in property <bool> tips-below: false;
+    callback action(string);
+
+    height: 32px;
+    spacing: 4px;
+    alignment: start;
+
+    IconButton { icon: Icons.RotateCw; tooltip: "Refresh capture"; shortcut: "re-captures and resets"; tooltip-below: root.tips-below; clicked => { root.action("refresh"); } }
+    IconButton { icon: Icons.Undo2; tooltip: "Undo"; shortcut: "Ctrl+Z"; enabled: root.can-undo; tooltip-below: root.tips-below; clicked => { root.action("undo"); } }
+    IconButton { icon: Icons.Redo2; tooltip: "Redo"; shortcut: "Ctrl+Shift+Z"; enabled: root.can-redo; tooltip-below: root.tips-below; clicked => { root.action("redo"); } }
+    IconButton { icon: Icons.Download; tooltip: "Save"; shortcut: "Ctrl+S"; tooltip-below: root.tips-below; clicked => { root.action("save"); } }
+    IconButton { icon: Icons.Copy; tooltip: "Copy"; shortcut: "Enter / Ctrl+C"; tooltip-below: root.tips-below; clicked => { root.action("copy"); } }
+    IconButton { icon: Icons.Pin; tooltip: "Pin selection"; tooltip-below: root.tips-below; clicked => { root.action("pin"); } }
+    IconButton { icon: Icons.ScanText; tooltip: "OCR selection"; shortcut: "O"; tooltip-below: root.tips-below; clicked => { root.action("ocr"); } }
+    IconButton { icon: Icons.Trash2; tooltip: "Clear annotations"; tooltip-below: root.tips-below; clicked => { root.action("clear-annotations"); } }
+    IconButton { icon: Icons.Maximize; tooltip: "Reset selection"; tooltip-below: root.tips-below; clicked => { root.action("clear-selection"); } }
+    IconButton { icon: Icons.Settings; tooltip: "Settings"; active: root.settings-visible; tooltip-below: root.tips-below; clicked => { root.action("settings"); } }
+    IconButton { icon: Icons.CircleHelp; tooltip: "Help"; shortcut: "?"; active: root.help-visible; tooltip-below: root.tips-below; clicked => { root.action("help"); } }
+    IconButton { icon: Icons.X; tooltip: "Close"; shortcut: "Esc"; tooltip-below: root.tips-below; clicked => { root.action("quit"); } }
+}
+
+component ToolButtons inherits HorizontalLayout {
+    in property <int> active-tool: 0;
+    in property <bool> tips-below: false;
+    callback tool(int);
+
+    height: 32px;
+    spacing: 4px;
+    alignment: start;
+
+    IconButton { icon: Icons.MousePointer2; tooltip: "Select"; shortcut: "V"; active: root.active-tool == 0; tooltip-below: root.tips-below; clicked => { root.tool(0); } }
+    IconButton { icon: Icons.Square; tooltip: "Rectangle"; shortcut: "R"; active: root.active-tool == 1; tooltip-below: root.tips-below; clicked => { root.tool(1); } }
+    IconButton { icon: Icons.SquareFill; tooltip: "Filled rectangle"; shortcut: "Shift+R"; active: root.active-tool == 2; tooltip-below: root.tips-below; clicked => { root.tool(2); } }
+    IconButton { icon: Icons.Slash; tooltip: "Line"; shortcut: "L"; active: root.active-tool == 3; tooltip-below: root.tips-below; clicked => { root.tool(3); } }
+    IconButton { icon: Icons.ArrowUpRight; tooltip: "Arrow"; shortcut: "A"; active: root.active-tool == 4; tooltip-below: root.tips-below; clicked => { root.tool(4); } }
+    IconButton { icon: Icons.Circle; tooltip: "Circle"; shortcut: "C"; active: root.active-tool == 5; tooltip-below: root.tips-below; clicked => { root.tool(5); } }
+    IconButton { icon: Icons.CircleFill; tooltip: "Filled circle"; shortcut: "Shift+C"; active: root.active-tool == 6; tooltip-below: root.tips-below; clicked => { root.tool(6); } }
+    IconButton { icon: Icons.Pen; tooltip: "Pen"; shortcut: "P"; active: root.active-tool == 7; tooltip-below: root.tips-below; clicked => { root.tool(7); } }
+    IconButton { icon: Icons.Highlighter; tooltip: "Highlighter"; shortcut: "H"; active: root.active-tool == 8; tooltip-below: root.tips-below; clicked => { root.tool(8); } }
+    IconButton { icon: Icons.EyeOff; tooltip: "Redact"; shortcut: "D"; active: root.active-tool == 9; tooltip-below: root.tips-below; clicked => { root.tool(9); } }
+    IconButton { icon: Icons.Hash; tooltip: "Counter"; shortcut: "N"; active: root.active-tool == 10; tooltip-below: root.tips-below; clicked => { root.tool(10); } }
+    IconButton { icon: Icons.Type; tooltip: "Text"; shortcut: "T"; active: root.active-tool == 11; tooltip-below: root.tips-below; clicked => { root.tool(11); } }
+    IconButton { icon: Icons.Waves; tooltip: "Blur"; shortcut: "B"; active: root.active-tool == 12; tooltip-below: root.tips-below; clicked => { root.tool(12); } }
+    IconButton { icon: Icons.Grid3x3; tooltip: "Pixelate"; shortcut: "M"; active: root.active-tool == 13; tooltip-below: root.tips-below; clicked => { root.tool(13); } }
+    IconButton { icon: Icons.Eraser; tooltip: "Eraser"; shortcut: "E"; active: root.active-tool == 14; tooltip-below: root.tips-below; clicked => { root.tool(14); } }
+    IconButton { icon: Icons.BoxSelect; tooltip: "Text border"; shortcut: "G"; active: root.active-tool == 15; tooltip-below: root.tips-below; clicked => { root.tool(15); } }
+}
+
+component OptionControls inherits HorizontalLayout {
+    in property <int> active-color: 0;
+    in property <int> stroke-width: 3;
+    in property <bool> tips-below: false;
+    callback pick-color(int);
+    callback action(string);
+
+    height: 32px;
+    spacing: 4px;
+    alignment: start;
+
+    Swatch { fill: Theme.swatch0; active: root.active-color == 0; clicked => { root.pick-color(0); } }
+    Swatch { fill: Theme.swatch1; active: root.active-color == 1; clicked => { root.pick-color(1); } }
+    Swatch { fill: Theme.swatch2; active: root.active-color == 2; clicked => { root.pick-color(2); } }
+    Swatch { fill: Theme.swatch3; active: root.active-color == 3; clicked => { root.pick-color(3); } }
+    Swatch { fill: Theme.swatch4; active: root.active-color == 4; clicked => { root.pick-color(4); } }
+    Swatch { fill: Theme.swatch5; active: root.active-color == 5; clicked => { root.pick-color(5); } }
+    Sep { }
+    IconButton { icon: Icons.Minus; tooltip: "Thinner stroke"; shortcut: "["; button-width: 28px; tooltip-below: root.tips-below; clicked => { root.action("width-"); } }
+    Text { width: 30px; text: root.stroke-width; color: Theme.hint-text; font-size: 13px; vertical-alignment: center; horizontal-alignment: center; }
+    IconButton { icon: Icons.Plus; tooltip: "Thicker stroke"; shortcut: "]"; button-width: 28px; tooltip-below: root.tips-below; clicked => { root.action("width+"); } }
+}
+
+export component EditorWindow inherits Window {
+    in property <image> shot;
+    in property <image> overlay;
+    // Where the image sits in the window (normalised 0..1).
+    in property <float> shot-nx;
+    in property <float> shot-ny;
+    in property <float> shot-nw: 1;
+    in property <float> shot-nh: 1;
+    in property <image> preview;
+    // Normalised (0..1) preview rectangle.
+    in property <float> preview-nx;
+    in property <float> preview-ny;
+    in property <float> preview-nw;
+    in property <float> preview-nh;
+    in property <bool> preview-visible;
+    // Normalised selection rectangle.
+    in property <float> sel-nx;
+    in property <float> sel-ny;
+    in property <float> sel-nw;
+    in property <float> sel-nh;
+    in property <bool> sel-visible;
+    in property <bool> sel-handles-visible: false;
+    // Hover highlight over a detected text region (normalised 0..1).
+    in property <bool> hover-visible: false;
+    in property <float> hover-nx;
+    in property <float> hover-ny;
+    in property <float> hover-nw;
+    in property <float> hover-nh;
+    // Brief full-length snap guides: plain lines in capture coordinates, so
+    // flashing one costs a couple of property updates (no image upload).
+    in property <bool> snap-guide-visible: false;
+    in property <bool> snap-guide-has-vertical: false;
+    in property <bool> snap-guide-has-horizontal: false;
+    in property <float> snap-guide-x;
+    in property <float> snap-guide-y;
+    in property <float> snap-guide-width: 1;
+    in property <float> snap-guide-height: 1;
+    // Hint bar: a status/tool line plus contextual shortcut chips.
+    in property <string> status: "";
+    in property <string> hint-primary: "";
+    in property <[string]> hint-chips;
+    in property <int> active-tool: 0;
+    in property <int> active-color: 0;
+    /// Pointer cursor, driven by Rust from the active tool.
+    in property <MouseCursor> tool-cursor: crosshair;
+    // Fall back to fullscreen when no explicit placement is known.
+    in property <bool> fullscreen: false;
+    // Settings panel.
+    in property <bool> settings-visible: false;
+    in property <string> copy-save-value: "off";
+    in property <string> snap-value: "on";
+    in property <string> guides-value: "on";
+    in property <string> auto-ocr-value: "off";
+    in property <int> text-size: 24;
+    in property <int> stroke-width: 3;
+    in property <string> ocr-confidence-value: "0.50";
+    in property <float> ocr-confidence: 0.5;
+    in property <string> ocr-boxes-value: "on";
+    in property <string> ocr-debug-value: "off";
+    in property <string> ocr-region-only-value: "off";
+    in property <string> models-dir: "";
+    in property <string> error-text: "";
+    // Help overlay.
+    in property <bool> help-visible: false;
+    in property <[HelpRow]> help-rows;
+    // Toolbar placement (window pixels), computed in Rust to follow the
+    // selection like the egui toolbar does.
+    in property <length> toolbar-x: 8px;
+    in property <length> toolbar-y: 0px;
+    in property <length> toolbar-width: 900px;
+    in property <length> toolbar-height: 40px;
+    in property <bool> toolbar-wrapped: false;
+    in property <bool> toolbar-tooltips-below: false;
+    in property <bool> can-undo: false;
+    in property <bool> can-redo: false;
+
+    // phase: 0 = down, 1 = move, 2 = up. Coordinates are normalised 0..1.
+    callback pointer(float, float, int);
+    callback key(string);
+    callback tool(int);
+    callback pick-color(int);
+    callback action(string);
+
+    background: Theme.canvas-bg;
+    no-frame: true;
+    always-on-top: true;
+    full-screen: root.fullscreen;
+    title: "Pocshot";
+
+    init => {
+        keys.focus();
+    }
+
+    Image {
+        source: root.shot;
+        x: root.shot-nx * root.width;
+        y: root.shot-ny * root.height;
+        width: root.shot-nw * root.width;
+        height: root.shot-nh * root.height;
+    }
+
+    Image {
+        source: root.overlay;
+        x: root.shot-nx * root.width;
+        y: root.shot-ny * root.height;
+        width: root.shot-nw * root.width;
+        height: root.shot-nh * root.height;
+    }
+
+    // Soft fill over the detected text block under the cursor (egui parity).
+    Rectangle {
+        visible: root.hover-visible;
+        x: root.hover-nx * root.width;
+        y: root.hover-ny * root.height;
+        width: root.hover-nw * root.width;
+        height: root.hover-nh * root.height;
+        background: Theme.ocr-hover;
+    }
+
+    // Brief snap guides, spanning the full capture width/height.
+    if (root.snap-guide-visible && root.snap-guide-has-vertical) : Rectangle {
+        x: root.shot-nx * root.width + root.snap-guide-x / root.snap-guide-width * root.shot-nw * root.width;
+        y: root.shot-ny * root.height;
+        width: 1px;
+        height: root.shot-nh * root.height;
+        background: Theme.snap-line;
+    }
+    if (root.snap-guide-visible && root.snap-guide-has-horizontal) : Rectangle {
+        x: root.shot-nx * root.width;
+        y: root.shot-ny * root.height + root.snap-guide-y / root.snap-guide-height * root.shot-nh * root.height;
+        width: root.shot-nw * root.width;
+        height: 1px;
+        background: Theme.snap-line;
+    }
+
+    Image {
+        visible: root.preview-visible;
+        source: root.preview;
+        x: root.preview-nx * root.width;
+        y: root.preview-ny * root.height;
+        width: root.preview-nw * root.width;
+        height: root.preview-nh * root.height;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: root.tool-cursor;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 0);
+            }
+            if (e.kind == PointerEventKind.move) {
+                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 1);
+            }
+            if (e.kind == PointerEventKind.up) {
+                root.pointer(ta.mouse-x / root.width, ta.mouse-y / root.height, 2);
+            }
+        }
+    }
+
+    // Dim everything outside the selection (only once a real selection exists).
+    if (root.sel-handles-visible) : Rectangle {
+        x: root.shot-nx * root.width;
+        y: root.shot-ny * root.height;
+        width: root.shot-nw * root.width;
+        height: (root.sel-ny - root.shot-ny) * root.height;
+        background: Theme.dim;
+    }
+    if (root.sel-handles-visible) : Rectangle {
+        x: root.shot-nx * root.width;
+        y: (root.sel-ny + root.sel-nh) * root.height;
+        width: root.shot-nw * root.width;
+        height: (root.shot-ny + root.shot-nh - root.sel-ny - root.sel-nh) * root.height;
+        background: Theme.dim;
+    }
+    if (root.sel-handles-visible) : Rectangle {
+        x: root.shot-nx * root.width;
+        y: root.sel-ny * root.height;
+        width: (root.sel-nx - root.shot-nx) * root.width;
+        height: root.sel-nh * root.height;
+        background: Theme.dim;
+    }
+    if (root.sel-handles-visible) : Rectangle {
+        x: (root.sel-nx + root.sel-nw) * root.width;
+        y: root.sel-ny * root.height;
+        width: (root.shot-nx + root.shot-nw - root.sel-nx - root.sel-nw) * root.width;
+        height: root.sel-nh * root.height;
+        background: Theme.dim;
+    }
+
+    Rectangle {
+        visible: root.sel-visible;
+        x: root.sel-nx * root.width;
+        y: root.sel-ny * root.height;
+        width: root.sel-nw * root.width;
+        height: root.sel-nh * root.height;
+        background: #00000000;
+        border-color: Theme.sel-border;
+        border-width: 2px;
+    }
+
+    // Selection resize handles: 4 corners + 4 edge midpoints.
+    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: root.sel-ny * root.height; win-w: root.width; win-h: root.height; cursor: nwse-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw / 2) * root.width; hy: root.sel-ny * root.height; win-w: root.width; win-h: root.height; cursor: ns-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: root.sel-ny * root.height; win-w: root.width; win-h: root.height; cursor: nesw-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: (root.sel-ny + root.sel-nh / 2) * root.height; win-w: root.width; win-h: root.height; cursor: ew-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw) * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; win-w: root.width; win-h: root.height; cursor: nwse-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: (root.sel-nx + root.sel-nw / 2) * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; win-w: root.width; win-h: root.height; cursor: ns-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh) * root.height; win-w: root.width; win-h: root.height; cursor: nesw-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+    SelHandle { show: root.sel-handles-visible; hx: root.sel-nx * root.width; hy: (root.sel-ny + root.sel-nh / 2) * root.height; win-w: root.width; win-h: root.height; cursor: ew-resize; pointer(nx, ny, ph) => { root.pointer(nx, ny, ph); } }
+
+    // Single floating toolbar. `toolbar-wrapped` chooses one row or two.
+    Rectangle {
+        visible: root.sel-visible;
+        x: root.toolbar-x - 2px;
+        y: root.toolbar-y - 2px;
+        width: root.toolbar-width + 4px;
+        height: root.toolbar-height + 4px;
+        border-radius: 12px;
+        background: #000000;
+        opacity: 0.35;
+    }
+
+    Rectangle {
+        x: root.toolbar-x;
+        y: root.toolbar-y;
+        width: root.toolbar-width;
+        height: root.toolbar-height;
+        border-radius: 10px;
+        background: Theme.toolbar-bg;
+        border-color: Theme.chip-border;
+        border-width: 1px;
+
+        if (!root.toolbar-wrapped) : HorizontalLayout {
+            x: 8px;
+            y: (root.toolbar-height - 32px) / 2;
+            height: 32px;
+            spacing: 6px;
+            alignment: start;
+            ActionButtons { can-undo: root.can-undo; can-redo: root.can-redo; settings-visible: root.settings-visible; help-visible: root.help-visible; tips-below: root.toolbar-tooltips-below; action(a) => { root.action(a); } }
+            Sep { }
+            ToolButtons { active-tool: root.active-tool; tips-below: root.toolbar-tooltips-below; tool(i) => { root.tool(i); } }
+            Sep { }
+            OptionControls { active-color: root.active-color; stroke-width: root.stroke-width; tips-below: root.toolbar-tooltips-below; pick-color(i) => { root.pick-color(i); } action(a) => { root.action(a); } }
+        }
+
+        if (root.toolbar-wrapped) : VerticalLayout {
+            x: 8px;
+            y: 8px;
+            spacing: 4px;
+            alignment: start;
+            HorizontalLayout {
+                height: 32px;
+                spacing: 6px;
+                alignment: start;
+                ActionButtons { can-undo: root.can-undo; can-redo: root.can-redo; settings-visible: root.settings-visible; help-visible: root.help-visible; tips-below: false; action(a) => { root.action(a); } }
+                Sep { }
+                OptionControls { active-color: root.active-color; stroke-width: root.stroke-width; tips-below: false; pick-color(i) => { root.pick-color(i); } action(a) => { root.action(a); } }
+            }
+            HorizontalLayout {
+                height: 32px;
+                spacing: 6px;
+                alignment: start;
+                ToolButtons { active-tool: root.active-tool; tips-below: true; tool(i) => { root.tool(i); } }
+            }
+        }
+    }
+
+    // Settings panel.
+    if (root.settings-visible) : Rectangle {
+        width: Math.max(0px, Math.min(316px, root.width - 24px));
+        height: Math.max(0px, Math.min(500px, root.height - 24px));
+        x: Math.max(12px, root.width - self.width - 12px);
+        y: Math.max(12px, root.height - self.height - 12px);
+        background: Theme.panel-bg;
+        border-radius: Theme.panel-radius * 1px;
+        border-color: Theme.panel-border;
+        border-width: 1px;
+
+        HorizontalLayout {
+            x: 16px;
+            y: 14px;
+            height: 28px;
+            spacing: 8px;
+            alignment: start;
+            IconDisplay { icon: Icons.Settings; size: 16px; stroke: #ffffff; }
+            Text { text: "Settings"; color: #ffffff; font-size: Theme.panel-title-font * 1px; vertical-alignment: center; }
+        }
+        IconButton {
+            x: parent.width - 44px;
+            y: 12px;
+            icon: Icons.X;
+            tooltip: "Close";
+            button-width: 28px;
+            tooltip-below: true;
+            clicked => { root.action("settings"); }
+        }
+
+        Flickable {
+            x: 16px;
+            y: 52px;
+            width: parent.width - 32px;
+            height: parent.height - 68px;
+            content-width: self.width;
+            content-height: settings-list.preferred-height;
+            settings-list := VerticalLayout {
+                width: 100%;
+                spacing: 8px;
+                alignment: start;
+
+                SectionLabel { icon: Icons.Download; text: "Export"; }
+                Switch { label: "Copy on save"; checked: root.copy-save-value == "on"; toggled => { root.action("copy-save"); } }
+
+                SectionLabel { icon: Icons.Maximize; text: "Snapping"; }
+                Switch { label: "Snapping"; checked: root.snap-value == "on"; toggled => { root.action("snap"); } }
+                Switch { label: "Show guides"; checked: root.guides-value == "on"; toggled => { root.action("guides"); } }
+
+                SectionLabel { icon: Icons.ScanText; text: "OCR / Text Detection"; }
+                Switch { label: "Enable text detection"; checked: root.auto-ocr-value == "on"; toggled => { root.action("auto-ocr"); } }
+                Switch { label: "Show text bounding boxes"; checked: root.ocr-boxes-value == "on"; toggled => { root.action("ocr-boxes"); } }
+                Switch { label: "Show OCR debug zones"; checked: root.ocr-debug-value == "on"; toggled => { root.action("ocr-debug"); } }
+                Switch { label: "Detect text only in selection"; checked: root.ocr-region-only-value == "on"; toggled => { root.action("ocr-region-only"); } }
+                HorizontalLayout {
+                    height: 28px;
+                    spacing: 8px;
+                    alignment: start;
+                    Text { text: "Min confidence"; color: Theme.hint-text; font-size: 13px; width: 150px; vertical-alignment: center; }
+                    ValueSlider {
+                        width: 80px;
+                        height: 24px;
+                        min: 0.10;
+                        max: 0.95;
+                        value: root.ocr-confidence;
+                        changed(v) => { root.action("ocr-confidence-live:" + v); }
+                        committed(v) => { root.action("ocr-confidence-set:" + v); }
+                    }
+                    Text { text: root.ocr-confidence-value; color: #ffffff; font-size: 13px; width: 40px; horizontal-alignment: center; vertical-alignment: center; }
+                }
+                Text { text: "Models dir"; color: Theme.hint-text; font-size: 13px; }
+                path-input := Rectangle {
+                    width: 100%;
+                    height: 28px;
+                    border-radius: 6px;
+                    background: Theme.control-track;
+                    TextInput {
+                        x: 8px;
+                        y: 4px;
+                        width: parent.width - 16px;
+                        height: 20px;
+                        text: root.models-dir;
+                        color: #ffffff;
+                        font-size: 12px;
+                        single-line: true;
+                        edited => { root.action("models-dir:" + self.text); }
+                    }
+                }
+                HorizontalLayout {
+                    height: 30px;
+                    spacing: 8px;
+                    alignment: start;
+                    IconButton { icon: Icons.Download; tooltip: "Download OCR models now"; shortcut: "ocrs .rten"; button-width: 32px; tooltip-below: true; clicked => { root.action("download-models"); } }
+                    Text { text: "Models auto-download on first use (ocrs .rten)"; color: Theme.text-faint; font-size: 11px; vertical-alignment: center; }
+                }
+                if (root.error-text != "") : Text {
+                    width: 100%;
+                    text: root.error-text;
+                    color: #ff6b6b;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+
+                SectionLabel { icon: Icons.Pen; text: "Annotations"; }
+                HorizontalLayout {
+                    height: 28px;
+                    spacing: 8px;
+                    alignment: start;
+                    Text { text: "Stroke width"; color: Theme.hint-text; font-size: 13px; width: 150px; vertical-alignment: center; }
+                    ValueSlider { width: 80px; height: 24px; min: 1; max: 24; value: root.stroke-width; changed(v) => { root.action("width-live:" + v); } committed(v) => { root.action("width-set:" + v); } }
+                }
+                HorizontalLayout {
+                    height: 28px;
+                    spacing: 8px;
+                    alignment: start;
+                    Text { text: "Text size"; color: Theme.hint-text; font-size: 13px; width: 150px; vertical-alignment: center; }
+                    ValueSlider { width: 80px; height: 24px; min: 8; max: 72; value: root.text-size; changed(v) => { root.action("text-size-live:" + v); } committed(v) => { root.action("text-size-set:" + v); } }
+                }
+                HorizontalLayout {
+                    height: 32px;
+                    spacing: 6px;
+                    alignment: start;
+                    Swatch { fill: Theme.swatch0; active: root.active-color == 0; clicked => { root.pick-color(0); } }
+                    Swatch { fill: Theme.swatch1; active: root.active-color == 1; clicked => { root.pick-color(1); } }
+                    Swatch { fill: Theme.swatch2; active: root.active-color == 2; clicked => { root.pick-color(2); } }
+                    Swatch { fill: Theme.swatch3; active: root.active-color == 3; clicked => { root.pick-color(3); } }
+                    Swatch { fill: Theme.swatch4; active: root.active-color == 4; clicked => { root.pick-color(4); } }
+                    Swatch { fill: Theme.swatch5; active: root.active-color == 5; clicked => { root.pick-color(5); } }
+                }
+
+                SectionLabel { icon: Icons.RotateCw; text: "Theme"; }
+                HorizontalLayout {
+                    height: 32px;
+                    spacing: 8px;
+                    alignment: start;
+                    IconButton { icon: Icons.RotateCw; tooltip: "Reload theme"; button-width: 32px; tooltip-below: true; clicked => { root.action("reload-theme"); } }
+                    Text { text: "re-reads config.json"; color: Theme.text-faint; font-size: 11px; vertical-alignment: center; }
+                }
+
+                SectionLabel { icon: Icons.Settings; text: "Debug"; }
+                Switch { label: "Show all snap lines"; checked: root.guides-value == "on"; toggled => { root.action("guides"); } }
+                Switch { label: "Enable snapping"; checked: root.snap-value == "on"; toggled => { root.action("snap"); } }
+                Text { text: "Hold Shift to temporarily disable snapping"; color: Theme.text-faint; font-size: 11px; wrap: word-wrap; }
+                Text { text: "Press Esc to cancel or close"; color: Theme.text-faint; font-size: 11px; }
+            }
+        }
+    }
+
+    // Help overlay: click-outside catcher, then the card.
+    if (root.help-visible) : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        TouchArea { clicked => { root.action("help"); } }
+    }
+
+    if (root.help-visible) : Rectangle {
+        width: Math.max(0px, Math.min(680px, root.width - 24px));
+        height: Math.max(0px, Math.min(520px, root.height - 24px));
+        x: Math.max(12px, (root.width - self.width) / 2);
+        y: Math.max(12px, (root.height - self.height) / 2);
+        background: Theme.panel-bg;
+        border-radius: Theme.panel-radius * 1px;
+        border-color: Theme.panel-border;
+        border-width: 1px;
+
+        Text {
+            x: 20px;
+            y: 16px;
+            text: "Shortcuts";
+            color: #ffffff;
+            font-size: Theme.panel-title-font * 1px;
+        }
+        IconButton {
+            x: parent.width - 44px;
+            y: 12px;
+            icon: Icons.X;
+            tooltip: "Close";
+            button-width: 28px;
+            tooltip-below: true;
+            clicked => { root.action("help"); }
+        }
+        Flickable {
+            x: 20px;
+            y: 52px;
+            width: parent.width - 40px;
+            height: parent.height - 68px;
+            content-width: self.width;
+            content-height: help-list.preferred-height;
+            help-list := VerticalLayout {
+                width: 100%;
+                spacing: 6px;
+                alignment: start;
+                for row in root.help-rows: HorizontalLayout {
+                    width: 100%;
+                    height: row-text.preferred-height;
+                    spacing: 12px;
+                    alignment: start;
+                    Text {
+                        width: 160px;
+                        text: row.keys;
+                        color: Theme.accent;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    row-text := Text {
+                        width: 100%;
+                        text: row.text;
+                        color: Theme.hint-text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+    }
+
+    // Hint bar: status on the left, contextual shortcut chips on the right.
+    Rectangle {
+        x: 0;
+        y: root.height - 30px;
+        width: 100%;
+        height: 30px;
+        background: Theme.toolbar-bg;
+    }
+
+    Text {
+        x: 12px;
+        y: root.height - 30px;
+        height: 30px;
+        width: 55%;
+        vertical-alignment: center;
+        color: Theme.hint-text;
+        font-size: 13px;
+        text: root.status == "" ? root.hint-primary : root.status;
+        overflow: elide;
+    }
+
+    HorizontalLayout {
+        x: root.width - 320px;
+        y: root.height - 30px;
+        width: 308px;
+        height: 30px;
+        spacing: 6px;
+        alignment: end;
+        for chip in root.hint-chips: Rectangle {
+            height: 20px;
+            width: chip-text.preferred-width + 14px;
+            border-radius: 5px;
+            background: Theme.chip-bg;
+            chip-text := Text {
+                x: 7px;
+                width: 100%;
+                height: 100%;
+                text: chip;
+                color: Theme.hint-text;
+                font-size: Theme.shortcut-font * 1px;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            root.key(e.text);
+            accept
+        }
+    }
+}
+
+/// Test probe: a single outlined icon on a black background, rendered by the
+/// offscreen `icon_probe_renders_pixels` test in `lib.rs`.
+export component IconProbe inherits Window {
+    background: #000000;
+    IconButton { x: 4px; y: 4px; icon: Icons.RotateCw; tooltip: "probe"; button-width: 32px; }
+}
+
+/// A pinned screenshot snippet: borderless, always-on-top, drag to move,
+/// right-click or Esc to close.
+export component PinWindow inherits Window {
+    in property <image> shot;
+    callback dismiss;
+    callback resize(length, length);
+
+    background: Theme.canvas-bg;
+    no-frame: true;
+    always-on-top: true;
+    title: "Pocshot pin";
+
+    // Right-click closes; declared below the move area so left-drags reach it.
+    TouchArea {
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                root.dismiss();
+            }
+        }
+    }
+
+    WindowMoveArea { }
+
+    Image {
+        source: root.shot;
+        width: 100%;
+        height: 100%;
+    }
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        border-color: Theme.panel-border;
+        border-width: 1px;
+    }
+
+    // Declared last so they sit above the move area and receive clicks.
+    close := IconButton {
+        x: root.width - 34px;
+        y: 6px;
+        icon: Icons.X;
+        tooltip: "Close";
+        button-width: 28px;
+        tooltip-below: true;
+        clicked => { root.dismiss(); }
+    }
+
+    grip := TouchArea {
+        x: root.width - 16px;
+        y: root.height - 16px;
+        width: 16px;
+        height: 16px;
+        mouse-cursor: nwse-resize;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.move && grip.pressed) {
+                root.resize(grip.mouse-x + grip.x, grip.mouse-y + grip.y);
+            }
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                root.dismiss();
+            }
+        }
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if (e.text == "\u{1b}" || e.text == "q") {
+                root.dismiss();
+            }
+            accept
+        }
+    }
+}

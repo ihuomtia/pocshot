@@ -1,0 +1,21 @@
+# M0 go/no-go spike — THROWAWAY, not part of the workspace.
+#
+# Validates Slint for pocshot: fullscreen transparent borderless window, a
+# full-screen Image fed from a pixel buffer, pointer drag + modifier keys,
+# always-on-top, and the software renderer (`SLINT_BACKEND=winit-software`).
+[workspace]
+
+[package]
+name = "spike-slint"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+slint = { version = "1.18", features = ["renderer-software"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11-dl = "2"
+
+[build-dependencies]
+slint-build = "1.18"

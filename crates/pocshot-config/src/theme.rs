@@ -5,7 +5,7 @@
 //! unspecified fields fall back to the built-in values via serde defaults. The
 //! "Reload theme" button in the settings panel re-reads it live.
 
-use eframe::egui::Color32;
+use ecolor::Color32;
 use serde::{Deserialize, Serialize};
 
 /// The visual theme. Embedded in `config.json`; every field defaults to the
@@ -342,9 +342,10 @@ impl Default for Theme {
 }
 
 /// Per-field serde defaults. A bare `#[serde(default)]` on a numeric field
-/// yields `0.0` (that is, `f32::default()`), not the built-in value, so a
-/// `geometry`/`fonts` object written before a field existed needs its own
-/// default function. Mirrors `pocshot-config`.
+/// yields `0.0` (that is, `f32::default()`), not the built-in value. When a
+/// `geometry`/`fonts` object already exists in `config.json` from before a
+/// field was introduced, the whole-object default never runs, so each such
+/// field needs its own default function.
 mod dflt {
     pub fn icon_size() -> f32 {
         18.0
@@ -376,8 +377,10 @@ mod dflt {
 }
 
 impl Theme {
-    /// Repair a theme loaded from an older/partial `config.json`; mirrors
-    /// `pocshot_config::theme::Theme::normalize`.
+    /// Repair a theme loaded from an older/partial `config.json`: Lucide fields
+    /// that deserialized as `0.0` (missing key in an existing `geometry`/`fonts`
+    /// object) are reset to the built-in value. Returns whether anything
+    /// changed so the caller can persist the repaired theme.
     pub fn normalize(&mut self) -> bool {
         let b = Theme::builtin();
         let mut changed = false;
@@ -650,7 +653,7 @@ mod tests {
     }
 
     #[test]
-    fn partial_theme_fills_from_builtin() {
+    fn partial_geometry_fills_from_builtin() {
         let json = r##"{
             "colors": { "accent": "#00ff00" }
         }"##;
@@ -658,6 +661,49 @@ mod tests {
         assert_eq!(t.colors.accent, Color32::from_rgb(0, 255, 0));
         assert_eq!(t.colors.canvas_bg, Theme::builtin().colors.canvas_bg);
         assert_eq!(t.fonts.hint, Theme::builtin().fonts.hint);
+    }
+
+    #[test]
+    fn existing_geometry_object_fills_new_numeric_fields() {
+        // A `geometry` object written before the Lucide fields existed: the
+        // whole-object default does not apply, so each new field must carry its
+        // own default, not serde's 0.0.
+        let json = r##"{ "geometry": { "toolbar_margin": 6.0, "button_w": 34.0 } }"##;
+        let t: Theme = serde_json::from_str(json).unwrap();
+        assert_eq!(t.geometry.icon_size, 18.0);
+        assert_eq!(t.geometry.icon_stroke, 1.75);
+        assert_eq!(t.geometry.panel_radius, 12.0);
+        assert_eq!(t.geometry.control_radius, 8.0);
+        assert_eq!(t.geometry.toolbar_padding, 8.0);
+    }
+
+    #[test]
+    fn zeroed_new_fields_are_normalized() {
+        // A config that already persisted 0.0 (written by the buggy defaults)
+        // must be repaired at load time.
+        let mut t = Theme::builtin();
+        t.geometry.icon_size = 0.0;
+        t.geometry.icon_stroke = 0.0;
+        t.geometry.panel_radius = 0.0;
+        t.geometry.control_radius = 0.0;
+        t.geometry.toolbar_padding = 0.0;
+        t.fonts.panel_title = 0.0;
+        t.fonts.section = 0.0;
+        t.fonts.row = 0.0;
+        t.fonts.shortcut = 0.0;
+        assert!(t.normalize());
+        let b = Theme::builtin();
+        assert_eq!(t.geometry.icon_size, 18.0);
+        assert_eq!(t.geometry.icon_stroke, 1.75);
+        assert_eq!(t.geometry.panel_radius, b.geometry.panel_radius);
+        assert_eq!(t.geometry.control_radius, b.geometry.control_radius);
+        assert_eq!(t.geometry.toolbar_padding, b.geometry.toolbar_padding);
+        assert_eq!(t.fonts.panel_title, b.fonts.panel_title);
+        assert_eq!(t.fonts.section, b.fonts.section);
+        assert_eq!(t.fonts.row, b.fonts.row);
+        assert_eq!(t.fonts.shortcut, b.fonts.shortcut);
+        // Idempotent.
+        assert!(!t.normalize());
     }
 
     #[test]
@@ -679,6 +725,33 @@ mod tests {
         let json = serde_json::to_string(&SerdeColorVecHolder(v.clone())).unwrap();
         let back = serde_json::from_str::<SerdeColorVecHolder>(&json).unwrap();
         assert_eq!(back.0, v);
+    }
+
+    #[test]
+    fn lucide_theme_fields_have_defaults_and_roundtrip() {
+        let t = Theme::builtin();
+        assert_eq!(t.geometry.icon_size, 18.0);
+        assert_eq!(t.geometry.icon_stroke, 1.75);
+        assert_eq!(t.geometry.panel_radius, 12.0);
+        assert_eq!(t.geometry.control_radius, 8.0);
+        assert_eq!(t.geometry.toolbar_padding, 8.0);
+        assert_eq!(t.fonts.panel_title, 15.0);
+        assert_eq!(t.fonts.section, 12.0);
+        assert_eq!(t.fonts.row, 13.0);
+        assert_eq!(t.fonts.shortcut, 11.0);
+        assert_eq!(color32_to_hex(&t.colors.panel_bg), "#1b1b1f");
+        assert_eq!(color32_to_hex(&t.colors.panel_border), "#3a3a42");
+        assert_eq!(color32_to_hex(&t.colors.control_track), "#3a3a42");
+
+        let json = serde_json::to_string(&t).unwrap();
+        let back: Theme = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, back);
+
+        // A legacy theme JSON missing the new keys still loads with defaults.
+        let legacy = r##"{ "colors": { "accent": "#00ff00" } }"##;
+        let partial: Theme = serde_json::from_str(legacy).unwrap();
+        assert_eq!(partial.geometry.icon_size, 18.0);
+        assert_eq!(partial.colors.panel_border, Theme::builtin().colors.panel_border);
     }
 
     #[derive(serde::Serialize, serde::Deserialize)]

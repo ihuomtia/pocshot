@@ -53,6 +53,10 @@ struct Cli {
     #[arg(long, global = true)]
     no_canvas: bool,
 
+    /// UI toolkit to use
+    #[arg(long, value_enum, global = true, default_value = "egui")]
+    ui: Ui,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -67,6 +71,14 @@ enum PresentModeArg {
     Immediate,
     /// Queue the newest frame, replacing any pending one.
     Mailbox,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Ui {
+    /// egui/eframe (default during the Slint migration)
+    Egui,
+    /// Slint
+    Slint,
 }
 
 #[derive(Debug, Subcommand)]
@@ -209,6 +221,8 @@ fn main() -> anyhow::Result<()> {
     pocshot_gui::install_fallback_hook();
     if cli.software {
         pocshot_gui::set_software_renderer();
+        #[cfg(feature = "ui-slint")]
+        pocshot_ui_slint::set_software_renderer();
     }
     if let Some(mode) = cli.present_mode {
         pocshot_gui::set_present_mode(mode.into());
@@ -232,17 +246,12 @@ fn main() -> anyhow::Result<()> {
     );
 
     match cli.command {
-        None | Some(Command::Gui) => {
-            if let Err(e) = pocshot_gui::run() {
-                let message = format!("Pocshot failed to start: {e}");
-                log::error!("{message}");
-                pocshot_core::show_error_dialog(&message);
-                std::process::exit(1);
-            }
-            Ok(())
-        }
+        None | Some(Command::Gui) => match cli.ui {
+            Ui::Egui => start(pocshot_gui::run()),
+            Ui::Slint => start(slint_run()),
+        },
         Some(Command::Capture(args)) => capture(args),
-        Some(Command::Pin(args)) => pin(args),
+        Some(Command::Pin(args)) => pin(args, cli.ui),
         Some(Command::Edit) => {
             let image = match pocshot_core::read_clipboard_image() {
                 Ok(image) => image,
@@ -253,16 +262,17 @@ fn main() -> anyhow::Result<()> {
                     std::process::exit(1);
                 }
             };
-            if let Err(e) = pocshot_gui::run_edit(image) {
-                let message = format!("Pocshot failed to start: {e}");
-                log::error!("{message}");
-                pocshot_core::show_error_dialog(&message);
-                std::process::exit(1);
+            match cli.ui {
+                Ui::Egui => start(pocshot_gui::run_edit(image)),
+                Ui::Slint => start(slint_run_edit(image)),
             }
-            Ok(())
         }
         Some(Command::Tray) => {
-            if let Err(e) = pocshot_tray::run() {
+            let ui = match cli.ui {
+                Ui::Egui => "egui",
+                Ui::Slint => "slint",
+            };
+            if let Err(e) = pocshot_tray::run(Some(ui.to_string())) {
                 let message = format!("Pocshot tray failed: {e}");
                 log::error!("{message}");
                 pocshot_core::show_error_dialog(&message);
@@ -277,9 +287,53 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-fn pin(args: PinArgs) -> anyhow::Result<()> {
-    pocshot_gui::run_pin(args.image, args.x, args.y, args.width, args.height)
-        .map_err(|e| anyhow::anyhow!("pin exited with error: {e}"))
+fn pin(args: PinArgs, ui: Ui) -> anyhow::Result<()> {
+    match ui {
+        Ui::Egui => pocshot_gui::run_pin(args.image, args.x, args.y, args.width, args.height)
+            .map_err(|e| anyhow::anyhow!("pin exited with error: {e}")),
+        Ui::Slint => slint_run_pin(args),
+    }
+}
+
+#[cfg(feature = "ui-slint")]
+fn slint_run_pin(args: PinArgs) -> anyhow::Result<()> {
+    pocshot_ui_slint::run_pin(args.image, args.x, args.y, args.width, args.height)
+}
+
+#[cfg(not(feature = "ui-slint"))]
+fn slint_run_pin(_args: PinArgs) -> anyhow::Result<()> {
+    anyhow::bail!("this build has no Slint UI compiled in (enable the `ui-slint` feature)")
+}
+
+/// Log/notify on a UI startup error, then exit.
+fn start<E: std::fmt::Display>(result: Result<(), E>) -> anyhow::Result<()> {
+    if let Err(e) = result {
+        let message = format!("Pocshot failed to start: {e}");
+        log::error!("{message}");
+        pocshot_core::show_error_dialog(&message);
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ui-slint")]
+fn slint_run() -> anyhow::Result<()> {
+    pocshot_ui_slint::run()
+}
+
+#[cfg(not(feature = "ui-slint"))]
+fn slint_run() -> anyhow::Result<()> {
+    anyhow::bail!("this build has no Slint UI compiled in (enable the `ui-slint` feature)")
+}
+
+#[cfg(feature = "ui-slint")]
+fn slint_run_edit(image: image::RgbaImage) -> anyhow::Result<()> {
+    pocshot_ui_slint::run_edit(image)
+}
+
+#[cfg(not(feature = "ui-slint"))]
+fn slint_run_edit(_image: image::RgbaImage) -> anyhow::Result<()> {
+    anyhow::bail!("this build has no Slint UI compiled in (enable the `ui-slint` feature)")
 }
 
 fn capture(args: CaptureArgs) -> anyhow::Result<()> {

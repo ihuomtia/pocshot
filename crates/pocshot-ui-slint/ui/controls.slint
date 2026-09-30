@@ -1,0 +1,224 @@
+// Reusable Lucide-native controls. View-only: all state lives in Rust.
+import { Icon, IconDisplay } from "icons.slint";
+import { Theme } from "theme.slint";
+
+/// A row of the help overlay.
+export struct HelpRow {
+    keys: string,
+    text: string,
+}
+
+/// A tooltip that hangs above (or below) its parent. Positioned by the
+/// instantiating `IconButton` (`x`/`y` are set there); it cannot read `parent`
+/// from its own root.
+export component IconTooltip inherits Rectangle {
+    in property <string> label;
+    in property <string> shortcut: "";
+    in property <bool> below: false;
+
+    width: Math.max(60px, label-text.preferred-width + 16px);
+    height: (root.shortcut == "") ? 24px : 40px;
+    background: Theme.tooltip-bg;
+    border-radius: 6px;
+    border-color: Theme.tooltip-border;
+    border-width: 1px;
+
+    label-text := Text {
+        x: 8px;
+        y: root.shortcut == "" ? 0 : 4px;
+        width: root.width - 16px;
+        height: root.shortcut == "" ? root.height : 18px;
+        text: root.label;
+        color: Theme.hint-text;
+        font-size: 12px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    if (root.shortcut != "") : Text {
+        x: 8px;
+        y: 20px;
+        width: root.width - 16px;
+        height: 16px;
+        text: root.shortcut;
+        color: Theme.text-faint;
+        font-size: 10px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+/// A square icon button with hover/active/disabled states and a tooltip.
+export component IconButton inherits Rectangle {
+    in property <Icon> icon;
+    in property <string> tooltip: "";
+    in property <string> shortcut: "";
+    in property <bool> active: false;
+    in property <bool> enabled: true;
+    in property <length> button-width: 32px;
+    in property <bool> tooltip-below: false;
+    callback clicked;
+
+    width: root.button-width;
+    height: 32px;
+    border-radius: Theme.control-radius * 1px;
+    background: !root.enabled ? Theme.control-track
+        : root.active ? Theme.accent
+        : ta.has-hover ? Theme.chip-hover
+        : Theme.chip-bg;
+
+    IconDisplay {
+        icon: root.icon;
+        size: Theme.icon-size * 1px;
+        stroke-width: Theme.icon-stroke;
+        stroke: !root.enabled ? Theme.icon-fg-disabled
+            : (root.active || ta.has-hover) ? Theme.icon-fg-active
+            : Theme.icon-fg-idle;
+        x: (root.width - Theme.icon-size * 1px) / 2;
+        y: (root.height - Theme.icon-size * 1px) / 2;
+    }
+
+    if (ta.has-hover && root.enabled && root.tooltip != "") : IconTooltip {
+        label: root.tooltip;
+        shortcut: root.shortcut;
+        below: root.tooltip-below;
+        x: (root.width - self.width) / 2;
+        y: root.tooltip-below ? root.height + 6px : -self.height - 6px;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if (root.enabled) { root.clicked(); } }
+    }
+}
+
+/// A labelled on/off switch.
+export component Switch inherits HorizontalLayout {
+    in property <bool> checked: false;
+    in property <string> label;
+    callback toggled;
+
+    height: 32px;
+    spacing: 8px;
+    alignment: start;
+
+    Text {
+        text: root.label;
+        color: Theme.hint-text;
+        font-size: Theme.row-font * 1px;
+        vertical-alignment: center;
+        width: 150px;
+    }
+
+    track := Rectangle {
+        width: 40px;
+        height: 22px;
+        border-radius: 11px;
+        background: root.checked ? Theme.accent : Theme.control-track;
+
+        Rectangle {
+            width: 18px;
+            height: 18px;
+            y: 2px;
+            x: root.checked ? track.width - 20px : 2px;
+            border-radius: 9px;
+            background: #ffffff;
+        }
+
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.toggled(); }
+        }
+    }
+}
+
+/// A horizontal slider with an accent fill and a numeric readout. Emits the
+/// continuous value; Rust clamps and quantises it.
+export component ValueSlider inherits Rectangle {
+    in property <float> value: 0;
+    in property <float> min: 0;
+    in property <float> max: 1;
+    /// Emitted continuously while dragging (live feedback).
+    callback changed(float);
+    /// Emitted on pointer release; the value to persist.
+    callback committed(float);
+
+    height: 24px;
+    border-radius: 4px;
+    background: Theme.control-track;
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width * (root.value - root.min) / (root.max - root.min);
+        height: 100%;
+        border-radius: 4px;
+        background: Theme.accent;
+    }
+
+    Text {
+        x: 0;
+        width: 100%;
+        height: 100%;
+        text: root.value;
+        color: #ffffff;
+        font-size: 11px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && ta.pressed)) {
+                root.changed(root.min + ta.mouse-x / root.width * (root.max - root.min));
+            }
+            if (e.kind == PointerEventKind.up) {
+                root.committed(root.min + ta.mouse-x / root.width * (root.max - root.min));
+            }
+        }
+    }
+}
+
+/// A colour swatch for the toolbar and settings panel.
+export component Swatch inherits Rectangle {
+    in property <color> fill;
+    in property <bool> active: false;
+    callback clicked;
+
+    width: 26px;
+    height: 26px;
+    border-radius: Theme.control-radius * 1px;
+    background: root.fill;
+    border-color: root.active ? #ffffff : (ta.has-hover ? #9a9a9a : transparent);
+    border-width: root.active ? 2px : 1px;
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// A vertical separator between toolbar groups.
+export component Sep inherits Rectangle {
+    width: 1px;
+    height: 24px;
+    background: Theme.chip-border;
+}
+
+/// An accent section heading with a leading icon.
+export component SectionLabel inherits HorizontalLayout {
+    in property <Icon> icon;
+    in property <string> text;
+    height: 24px;
+    spacing: 6px;
+    alignment: start;
+
+    IconDisplay { icon: root.icon; size: 14px; stroke: Theme.accent; }
+    Text {
+        text: root.text;
+        color: Theme.accent;
+        font-size: Theme.section-font * 1px;
+        vertical-alignment: center;
+    }
+}

@@ -1,0 +1,1012 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.30s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.30s
+     Running `/tmp/opencode/spike-target/debug/spike-slint`
+     Running `/tmp/opencode/spike-target/debug/spike-slint`
+spike: down 1115.9587,228.20883
+spike: down 1115.9587,228.20883
+spike: move 1115.9587,230.03015
+spike: move 1115.9587,230.03015
+spike: move 1114.7141,236.25363
+spike: move 1114.7141,236.25363
+spike: move 1108.7394,246.21144
+spike: move 1108.7394,246.21144
+spike: move 1102.7394,258.21146
+spike: move 1102.7394,258.21146
+spike: move 1094.7394,272.21146
+spike: move 1094.7394,272.21146
+spike: move 1084.7394,286.21146
+spike: move 1084.7394,286.21146
+spike: move 1074.7394,302.21146
+spike: move 1074.7394,302.21146
+spike: move 1062.7394,320.21146
+spike: move 1062.7394,320.21146
+spike: move 1048.7394,338.21146
+spike: move 1048.7394,338.21146
+spike: move 1040.3516,353.3095
+spike: move 1040.3516,353.3095
+spike: move 1031.4652,365.75046
+spike: move 1031.4652,365.75046
+spike: move 1021.5876,381.55463
+spike: move 1021.5876,381.55463
+spike: move 1007.7589,397.35883
+spike: move 1007.7589,397.35883
+spike: move 993.7589,413.35883
+spike: move 993.7589,413.35883
+spike: move 981.7589,429.35883
+spike: move 981.7589,429.35883
+spike: move 969.7589,443.35883
+spike: move 969.7589,443.35883
+spike: move 959.7589,457.35883
+spike: move 959.7589,457.35883
+spike: move 951.7589,471.35883
+spike: move 951.7589,471.35883
+spike: move 941.7589,481.35883
+spike: move 941.7589,481.35883
+spike: move 931.7589,491.35883
+spike: move 931.7589,491.35883
+spike: move 923.7589,503.35883
+spike: move 923.7589,503.35883
+spike: move 915.7589,515.3588
+spike: move 915.7589,515.3588
+spike: move 909.7589,527.3588
+spike: move 909.7589,527.3588
+spike: move 901.7589,537.3588
+spike: move 901.7589,537.3588
+spike: move 893.8374,549.2411
+spike: move 893.8374,549.2411
+spike: move 887.8963,559.14294
+spike: move 887.8963,559.14294
+spike: move 875.8963,573.14294
+spike: move 875.8963,573.14294
+spike: move 863.8963,587.14294
+spike: move 863.8963,587.14294
+spike: move 851.8963,601.14294
+spike: move 851.8963,601.14294
+spike: move 843.8963,611.14294
+spike: move 843.8963,611.14294
+spike: move 840.6696,620.823
+spike: move 840.6696,620.823
+spike: move 836.1807,624.18964spike: move 836.1807,624.18964
+
+spike: move 834.28754,624.18964
+spike: move 834.28754,624.18964
+spike: key text='' ctrl=1 shift=0
+spike: key text='' ctrl=1 shift=0
+spike: move 833.76526,624.18964 ctrl
+spike: move 833.76526,624.18964 ctrl
+spike: move 832.8297,624.18964 ctrl
+spike: move 832.8297,624.18964 ctrl
+spike: move 832.8297,623.18964 ctrl
+spike: move 832.8297,623.18964 ctrl
+spike: key text='' ctrl=1 shift=1
+spike: key text='' ctrl=1 shift=1
+spike: move 832.8297,621.41956 ctrl shift
+spike: move 832.8297,621.41956 ctrl shift
+spike: move 832.8297,618.85944 ctrl shift
+spike: move 832.8297,618.85944 ctrl shift
+spike: move 831.799,616.79803 ctrl shift
+spike: move 831.799,616.79803 ctrl shift
+spike: move 829.3378,612.0292 ctrl shift
+spike: move 829.3378,612.0292 ctrl shift
+spike: move 828.08185,609.5172 ctrl shift
+spike: move 828.08185,609.5172 ctrl shift
+spike: move 826.78625,605.6305 ctrl shift
+spike: move 826.78625,605.6305 ctrl shift
+spike: move 825.35657,601.3414 ctrl shift
+spike: move 825.35657,601.3414 ctrl shift
+spike: move 824.072,596.2031 ctrl shift
+spike: move 824.072,596.2031 ctrl shift
+spike: move 821.9654,591.98987 ctrl shift
+spike: move 821.9654,591.98987 ctrl shift
+spike: move 817.9061,585.93066 ctrl shift
+spike: move 817.9061,585.93066 ctrl shift
+spike: move 816.4718,583.0619 ctrl shift
+spike: move 816.4718,583.0619 ctrl shift
+spike: move 811.21735,577.80743 ctrl shift
+spike: move 811.21735,577.80743 ctrl shift
+spike: move 803.5717,566.9696 ctrl shift
+spike: move 803.5717,566.9696 ctrl shift
+spike: move 803.5717,564.90674 ctrl shift
+spike: move 803.5717,564.90674 ctrl shift
+spike: move 797.978,558.4857 ctrl shift
+spike: move 797.978,558.4857 ctrl shift
+spike: move 796.978,557.4857 ctrl shift
+spike: move 796.978,557.4857 ctrl shift
+spike: move 793.5953,553.10297 ctrl shift
+spike: move 793.5953,553.10297 ctrl shift
+spike: move 792.53217,550.97675 ctrl shift
+spike: move 792.53217,550.97675 ctrl shift
+spike: move 787.6563,543.70557 ctrl shift
+spike: move 787.6563,543.70557 ctrl shift
+spike: move 784.8991,540.9483 ctrl shift
+spike: move 784.8991,540.9483 ctrl shift
+spike: move 779.6501,533.0776 ctrl shift
+spike: move 779.6501,533.0776 ctrl shift
+spike: move 778.4628,529.51575 ctrl shift
+spike: move 778.4628,529.51575 ctrl shift
+spike: move 771.7049,520.1296 ctrl shift
+spike: move 771.7049,520.1296 ctrl shift
+spike: move 770.2749,518.6996 ctrl shift
+spike: move 770.2749,518.6996 ctrl shift
+spike: move 768.909,514.602 ctrl shift
+spike: move 768.909,514.602 ctrl shift
+spike: move 762.54156,503.36923 ctrl shift
+spike: move 762.54156,503.36923 ctrl shift
+spike: move 761.0625,500.41104 ctrl shift
+spike: move 761.0625,500.41104 ctrl shift
+spike: move 761.0625,499.38248 ctrl shift
+spike: move 761.0625,499.38248 ctrl shift
+spike: move 758.81775,496.01385 ctrl shift
+spike: move 758.81775,496.01385 ctrl shift
+spike: move 758.81775,492.63065 ctrl shift
+spike: move 758.81775,492.63065 ctrl shift
+spike: move 756.11487,489.92776 ctrl shift
+spike: move 756.11487,489.92776 ctrl shift
+spike: move 756.11487,486.77512 ctrl shift
+spike: move 756.11487,486.77512 ctrl shift
+spike: move 753.47284,482.81213 ctrl shift
+spike: move 753.47284,482.81213 ctrl shift
+spike: move 753.47284,481.60016 ctrl shift
+spike: move 753.47284,481.60016 ctrl shift
+spike: move 753.47284,478.5634 ctrl shift
+spike: move 753.47284,478.5634 ctrl shift
+spike: move 751.0253,476.11588 ctrl shift
+spike: move 751.0253,476.11588 ctrl shift
+spike: move 751.0253,473.6711 ctrl shift
+spike: move 751.0253,473.6711 ctrl shift
+spike: move 749.7585,465.64383 ctrl shift
+spike: move 749.7585,465.64383 ctrl shift
+spike: move 749.7585,461.48776 ctrl shift
+spike: move 749.7585,461.48776 ctrl shift
+spike: move 748.35144,457.26654 ctrl shift
+spike: move 748.35144,457.26654 ctrl shift
+spike: move 745.0931,444.23322 ctrl shift
+spike: move 745.0931,444.23322 ctrl shift
+spike: move 737.2972,430.5904 ctrl shift
+spike: move 737.2972,430.5904 ctrl shift
+spike: move 731.2972,420.5904 ctrl shift
+spike: move 731.2972,420.5904 ctrl shift
+spike: move 725.36804,404.73215 ctrl shift
+spike: move 725.36804,404.73215 ctrl shift
+spike: move 721.789,397.574 ctrl shift
+spike: move 721.789,397.574 ctrl shift
+spike: move 720.0462,390.60294 ctrl shift
+spike: move 720.0462,390.60294 ctrl shift
+spike: move 715.10785,378.96143 ctrl shift
+spike: move 715.10785,378.96143 ctrl shift
+spike: move 715.10785,376.30453 ctrl shift
+spike: move 715.10785,376.30453 ctrl shift
+spike: move 713.84076,372.50336 ctrl shift
+spike: move 713.84076,372.50336 ctrl shift
+spike: move 710.8971,363.8572 ctrl shift
+spike: move 710.8971,363.8572 ctrl shift
+spike: move 710.8971,362.63782 ctrl shift
+spike: move 710.8971,362.63782 ctrl shift
+spike: move 710.8971,360.60037 ctrl shift
+spike: move 710.8971,360.60037 ctrl shift
+spike: move 708.4373,358.14056 ctrl shift
+spike: move 708.4373,358.14056 ctrl shift
+spike: move 708.4373,357.06766 ctrl shift
+spike: move 708.4373,357.06766 ctrl shift
+spike: move 706.3092,354.93958 ctrl shift
+spike: move 706.3092,354.93958 ctrl shift
+spike: move 706.3092,353.87534 ctrl shift
+spike: move 706.3092,353.87534 ctrl shift
+spike: move 705.3092,353.87534 ctrl shift
+spike: move 705.3092,353.87534 ctrl shift
+spike: move 703.3092,351.87534 ctrl shift
+spike: move 703.3092,351.87534 ctrl shift
+spike: move 702.3092,351.87534 ctrl shift
+spike: move 702.3092,351.87534 ctrl shift
+spike: move 700.3092,349.87534 ctrl shift
+spike: move 700.3092,349.87534 ctrl shift
+spike: move 699.3092,348.87534 ctrl shift
+spike: move 699.3092,348.87534 ctrl shift
+spike: move 694.1978,346.35516 ctrl shift
+spike: move 694.1978,346.35516 ctrl shift
+spike: move 691.7594,343.91675 ctrl shift
+spike: move 691.7594,343.91675 ctrl shift
+spike: move 689.0895,341.24683 ctrl shift
+spike: move 689.0895,341.24683 ctrl shift
+spike: move 682.83044,338.1173 ctrl shift
+spike: move 682.83044,338.1173 ctrl shift
+spike: move 679.6989,334.9858 ctrl shift
+spike: move 679.6989,334.9858 ctrl shift
+spike: move 677.02795,332.31485 ctrl shift
+spike: move 677.02795,332.31485 ctrl shift
+spike: move 672.4619,327.74875 ctrl shift
+spike: move 672.4619,327.74875 ctrl shift
+spike: move 671.1187,326.40558 ctrl shift
+spike: move 671.1187,326.40558 ctrl shift
+spike: move 670.1187,325.40558 ctrl shift
+spike: move 670.1187,325.40558 ctrl shift
+spike: move 669.1187,324.40558 ctrl shift
+spike: move 669.1187,324.40558 ctrl shift
+spike: move 666.81683,322.1037 ctrl shift
+spike: move 666.81683,322.1037 ctrl shift
+spike: move 665.66675,320.9536 ctrl shift
+spike: move 665.66675,320.9536 ctrl shift
+spike: move 663.34955,318.6364 ctrl shift
+spike: move 663.34955,318.6364 ctrl shift
+spike: move 660.67444,315.96133 ctrl shift
+spike: move 660.67444,315.96133 ctrl shift
+spike: move 659.53143,314.81833 ctrl shift
+spike: move 659.53143,314.81833 ctrl shift
+spike: move 655.73315,312.28613 ctrl shift
+spike: move 655.73315,312.28613 ctrl shift
+spike: move 654.5046,312.28613 ctrl shift
+spike: move 654.5046,312.28613 ctrl shift
+spike: move 652.2805,310.0621 ctrl shift
+spike: move 652.2805,310.0621 ctrl shift
+spike: move 651.131,308.91257 ctrl shift
+spike: move 651.131,308.91257 ctrl shift
+spike: move 648.8281,306.60965 ctrl shift
+spike: move 648.8281,306.60965 ctrl shift
+spike: move 646.3114,305.3513 ctrl shift
+spike: move 646.3114,305.3513 ctrl shift
+spike: move 643.804,302.84396 ctrl shift
+spike: move 643.804,302.84396 ctrl shift
+spike: move 642.65686,301.6968 ctrl shift
+spike: move 642.65686,301.6968 ctrl shift
+spike: move 638.8991,299.19162 ctrl shift
+spike: move 638.8991,299.19162 ctrl shift
+spike: move 637.64417,297.93668 ctrl shift
+spike: move 637.64417,297.93668 ctrl shift
+spike: move 635.5666,297.93668 ctrl shift
+spike: move 635.5666,297.93668 ctrl shift
+spike: move 633.1231,295.49323 ctrl shift
+spike: move 633.1231,295.49323 ctrl shift
+spike: move 631.97144,294.34152 ctrl shift
+spike: move 631.97144,294.34152 ctrl shift
+spike: move 628.91315,291.28323 ctrl shift
+spike: move 628.91315,291.28323 ctrl shift
+spike: move 627.3865,289.7566 ctrl shift
+spike: move 627.3865,289.7566 ctrl shift
+spike: move 625.0814,287.4515 ctrl shift
+spike: move 625.0814,287.4515 ctrl shift
+spike: move 622.6323,287.4515 ctrl shift
+spike: move 622.6323,287.4515 ctrl shift
+spike: move 620.1735,284.99268 ctrl shift
+spike: move 620.1735,284.99268 ctrl shift
+spike: move 619.08246,284.99268 ctrl shift
+spike: move 619.08246,284.99268 ctrl shift
+spike: move 616.1797,282.08994 ctrl shift
+spike: move 616.1797,282.08994 ctrl shift
+spike: move 612.7668,278.67703 ctrl shift
+spike: move 612.7668,278.67703 ctrl shift
+spike: move 611.61365,277.5239 ctrl shift
+spike: move 611.61365,277.5239 ctrl shift
+spike: move 610.5492,275.3949 ctrl shift
+spike: move 610.5492,275.3949 ctrl shift
+spike: move 606.2174,271.06317 ctrl shift
+spike: move 606.2174,271.06317 ctrl shift
+spike: move 602.6987,264.02573 ctrl shift
+spike: move 602.6987,264.02573 ctrl shift
+spike: move 597.06616,256.51563 ctrl shift
+spike: move 597.06616,256.51563 ctrl shift
+spike: move 591.2354,248.74132 ctrl shift
+spike: move 591.2354,248.74132 ctrl shift
+spike: move 585.44934,241.02658 ctrl shift
+spike: move 585.44934,241.02658 ctrl shift
+spike: move 579.4827,231.08217 ctrl shift
+spike: move 579.4827,231.08217 ctrl shift
+spike: move 573.7156,225.31503 ctrl shift
+spike: move 573.7156,225.31503 ctrl shift
+spike: move 570.43646,220.39638 ctrl shift
+spike: move 570.43646,220.39638 ctrl shift
+spike: move 567.1028,213.72903 ctrl shift
+spike: move 567.1028,213.72903 ctrl shift
+spike: move 563.97644,210.60266 ctrl shift
+spike: move 563.97644,210.60266 ctrl shift
+spike: move 562.82513,209.4514 ctrl shift
+spike: move 562.82513,209.4514 ctrl shift
+spike: move 562.82513,208.4514 ctrl shift
+spike: move 562.82513,208.4514 ctrl shift
+spike: move 560.58575,206.21196 ctrl shift
+spike: move 560.58575,206.21196 ctrl shift
+spike: move 558.32263,205.08041 ctrl shift
+spike: move 558.32263,205.08041 ctrl shift
+spike: move 558.32263,204.08041 ctrl shift
+spike: move 558.32263,204.08041 ctrl shift
+spike: move 556.32263,202.08041 ctrl shift
+spike: move 556.32263,202.08041 ctrl shift
+spike: move 556.32263,202.9836 ctrl shift
+spike: move 556.32263,202.9836 ctrl shift
+spike: move 556.32263,203.8748 ctrl shift
+spike: move 556.32263,203.8748 ctrl shift
+spike: move 556.32263,204.89117 ctrl shift
+spike: move 556.32263,204.89117 ctrl shift
+spike: move 556.32263,205.90753 ctrl shift
+spike: move 556.32263,205.90753 ctrl shift
+spike: move 556.32263,209.33322 ctrl shift
+spike: move 556.32263,209.33322 ctrl shift
+spike: move 555.03735,211.90376 ctrl shift
+spike: move 555.03735,211.90376 ctrl shift
+spike: move 555.03735,215.74518 ctrl shift
+spike: move 555.03735,215.74518 ctrl shift
+spike: move 553.63055,219.9655 ctrl shift
+spike: move 553.63055,219.9655 ctrl shift
+spike: move 551.1461,223.69218 ctrl shift
+spike: move 551.1461,223.69218 ctrl shift
+spike: move 549.7716,229.19017 ctrl shift
+spike: move 549.7716,229.19017 ctrl shift
+spike: move 548.07874,235.96162 ctrl shift
+spike: move 548.07874,235.96162 ctrl shift
+spike: move 546.3803,242.75537 ctrl shift
+spike: move 546.3803,242.75537 ctrl shift
+spike: move 544.5565,251.87451 ctrl shift
+spike: move 544.5565,251.87451 ctrl shift
+spike: move 542.5999,261.6575 ctrl shift
+spike: move 542.5999,261.6575 ctrl shift
+spike: move 540.76855,268.9829 ctrl shift
+spike: move 540.76855,268.9829 ctrl shift
+spike: move 539.07904,275.74084 ctrl shift
+spike: move 539.07904,275.74084 ctrl shift
+spike: move 537.3805,282.535 ctrl shift
+spike: move 537.3805,282.535 ctrl shift
+spike: move 535.5494,291.6907 ctrl shift
+spike: move 535.5494,291.6907 ctrl shift
+spike: move 533.5575,303.64215 ctrl shift
+spike: move 533.5575,303.64215 ctrl shift
+spike: move 529.6213,311.51453 ctrl shift
+spike: move 529.6213,311.51453 ctrl shift
+spike: move 527.7366,320.93802 ctrl shift
+spike: move 527.7366,320.93802 ctrl shift
+spike: move 525.7431,332.89883 ctrl shift
+spike: move 525.7431,332.89883 ctrl shift
+spike: move 521.7431,342.89883 ctrl shift
+spike: move 521.7431,342.89883 ctrl shift
+spike: move 517.7993,362.61777 ctrl shift
+spike: move 517.7993,362.61777 ctrl shift
+spike: move 513.81213,374.57928 ctrl shift
+spike: move 513.81213,374.57928 ctrl shift
+spike: move 511.8185,384.54752 ctrl shift
+spike: move 511.8185,384.54752 ctrl shift
+spike: move 507.83435,414.21054 ctrl shift
+spike: move 507.83435,414.21054 ctrl shift
+spike: move 507.83435,423.96616 ctrl shift
+spike: move 507.83435,423.96616 ctrl shift
+spike: move 506.016,431.23953 ctrl shift
+spike: move 506.016,431.23953 ctrl shift
+spike: move 504.1832,450.11337 ctrl shift
+spike: move 504.1832,450.11337 ctrl shift
+spike: move 504.1832,457.27774 ctrl shift
+spike: move 504.1832,457.27774 ctrl shift
+spike: move 502.3824,466.28186 ctrl shift
+spike: move 502.3824,466.28186 ctrl shift
+spike: move 497.02362,489.54846 ctrl shift
+spike: move 497.02362,489.54846 ctrl shift
+spike: move 495.19,496.88297 ctrl shift
+spike: move 495.19,496.88297 ctrl shift
+spike: move 490.0384,517.25323 ctrl shift
+spike: move 490.0384,517.25323 ctrl shift
+spike: move 481.25708,554.2116 ctrl shift
+spike: move 481.25708,554.2116 ctrl shift
+spike: move 475.14267,580.31665 ctrl shift
+spike: move 475.14267,580.31665 ctrl shift
+spike: move 468.8101,605.48517 ctrl shift
+spike: move 468.8101,605.48517 ctrl shift
+spike: move 461.3171,633.78827 ctrl shift
+spike: move 461.3171,633.78827 ctrl shift
+spike: move 449.73126,678.71045 ctrl shift
+spike: move 449.73126,678.71045 ctrl shift
+spike: move 440.37323,716.3584 ctrl shift
+spike: move 440.37323,716.3584 ctrl shift
+spike: move 439.00104,726.21484 ctrl shift
+spike: move 439.00104,726.21484 ctrl shift
+spike: move 448.51883,788.11804 ctrl shift
+spike: move 448.51883,788.11804 ctrl shift
+spike: move 486.65466,855.7899 ctrl shift
+spike: move 486.65466,855.7899 ctrl shift
+spike: move 556.87164,904.7983 ctrl shift
+spike: move 556.87164,904.7983 ctrl shift
+spike: move 637.5456,938.8588 ctrl shift
+spike: move 637.5456,938.8588 ctrl shift
+spike: move 736.52057,944.8588 ctrl shift
+spike: move 736.52057,944.8588 ctrl shift
+spike: move 810.65533,946.60925 ctrl shift
+spike: move 810.65533,946.60925 ctrl shift
+spike: move 886.0317,946.60925 ctrl shift
+spike: move 886.0317,946.60925 ctrl shift
+spike: move 934.61304,946.60925 ctrl shift
+spike: move 934.61304,946.60925 ctrl shift
+spike: move 983.88605,946.60925 ctrl shift
+spike: move 983.88605,946.60925 ctrl shift
+spike: move 1016.7733,946.60925 ctrl shift
+spike: move 1016.7733,946.60925 ctrl shift
+spike: move 1060.6954,946.60925 ctrl shift
+spike: move 1060.6954,946.60925 ctrl shift
+spike: move 1076.6954,946.60925 ctrl shift
+spike: move 1076.6954,946.60925 ctrl shift
+spike: move 1128.6954,946.60925 ctrl shift
+spike: move 1128.6954,946.60925 ctrl shift
+spike: move 1146.6954,946.60925 ctrl shift
+spike: move 1146.6954,946.60925 ctrl shift
+spike: move 1180.6954,946.60925 ctrl shift
+spike: move 1180.6954,946.60925 ctrl shift
+spike: move 1198.6954,946.60925 ctrl shift
+spike: move 1198.6954,946.60925 ctrl shift
+spike: move 1216.6954,946.60925 ctrl shift
+spike: move 1216.6954,946.60925 ctrl shift
+spike: move 1246.6954,946.60925 ctrl shift
+spike: move 1246.6954,946.60925 ctrl shift
+spike: move 1262.6954,946.60925 ctrl shift
+spike: move 1262.6954,946.60925 ctrl shift
+spike: move 1278.6954,946.60925 ctrl shift
+spike: move 1278.6954,946.60925 ctrl shift
+spike: move 1330.6954,930.60925 ctrl shift
+spike: move 1330.6954,930.60925 ctrl shift
+spike: move 1342.6954,928.60925 ctrl shift
+spike: move 1342.6954,928.60925 ctrl shift
+spike: move 1376.6631,920.6157 ctrl shift
+spike: move 1376.6631,920.6157 ctrl shift
+spike: move 1386.6152,916.6349 ctrl shift
+spike: move 1386.6152,916.6349 ctrl shift
+spike: move 1402.4067,913.1846 ctrl shift
+spike: move 1402.4067,913.1846 ctrl shift
+spike: move 1408.624,909.0397 ctrl shift
+spike: move 1408.624,909.0397 ctrl shift
+spike: move 1420.6218,897.0419 ctrl shift
+spike: move 1420.6218,897.0419 ctrl shift
+spike: move 1438.8802,871.38574 ctrl shift
+spike: move 1438.8802,871.38574 ctrl shift
+spike: move 1481.2626,828.37476 ctrl shift
+spike: move 1481.2626,828.37476 ctrl shift
+spike: move 1505.6143,803.4825 ctrl shift
+spike: move 1505.6143,803.4825 ctrl shift
+spike: move 1525.5956,779.5983 ctrl shift
+spike: move 1525.5956,779.5983 ctrl shift
+spike: move 1557.4019,731.9086 ctrl shift
+spike: move 1557.4019,731.9086 ctrl shift
+spike: move 1586.1227,707.2431 ctrl shift
+spike: move 1586.1227,707.2431 ctrl shift
+spike: move 1593.8309,684.9273 ctrl
+spike: move 1593.8309,684.9273 ctrl
+spike: key-up text='' ctrl=1 shift=0
+spike: key-up text='' ctrl=1 shift=0
+spike: move 1600.7109,660.3966 ctrl
+spike: move 1600.7109,660.3966 ctrl
+spike: key-up text='' ctrl=0 shift=0
+spike: key-up text='' ctrl=0 shift=0
+spike: move 1600.7109,639.4159
+spike: move 1600.7109,639.4159
+spike: move 1600.7109,628.00275
+spike: move 1600.7109,628.00275
+spike: move 1600.7109,602.9409
+spike: move 1600.7109,602.9409
+spike: move 1600.7109,566.56433
+spike: move 1600.7109,566.56433
+spike: move 1591.138,542.6911
+spike: move 1591.138,542.6911
+spike: move 1586.5549,530.1436
+spike: move 1586.5549,530.1436
+spike: move 1582.4489,513.6059 ctrl
+spike: move 1582.4489,513.6059 ctrl
+spike: key text='' ctrl=1 shift=0
+spike: key text='' ctrl=1 shift=0
+spike: move 1581.016,509.3072 ctrl
+spike: move 1581.016,509.3072 ctrl
+spike: move 1575.8892,500.75253 ctrl
+spike: move 1575.8892,500.75253 ctrl
+spike: move 1570.6682,491.88046 ctrl
+spike: move 1570.6682,491.88046 ctrl
+spike: move 1567.9375,487.7845 ctrl
+spike: move 1567.9375,487.7845 ctrl
+spike: move 1563.4063,478.40076 ctrl
+spike: move 1563.4063,478.40076 ctrl
+spike: move 1562.2285,476.04532 ctrl
+spike: move 1562.2285,476.04532 ctrl
+spike: move 1555.9507,468.40814 ctrl
+spike: move 1555.9507,468.40814 ctrl
+spike: move 1553.0614,464.07416 ctrl
+spike: move 1553.0614,464.07416 ctrl
+spike: move 1544.059,452.34656 ctrl
+spike: move 1544.059,452.34656 ctrl
+spike: move 1540.5594,445.34738 ctrl
+spike: move 1540.5594,445.34738 ctrl
+spike: move 1531.6777,434.60217 ctrl
+spike: move 1531.6777,434.60217 ctrl
+spike: move 1530.2937,430.44998 ctrl
+spike: move 1530.2937,430.44998 ctrl
+spike: move 1525.5447,425.70102 ctrl
+spike: move 1525.5447,425.70102 ctrl
+spike: move 1517.8933,418.04968 ctrl
+spike: move 1517.8933,418.04968 ctrl
+spike: move 1512.3862,410.70685 ctrl
+spike: move 1512.3862,410.70685 ctrl
+spike: move 1500.4398,400.75146 ctrl
+spike: move 1500.4398,400.75146 ctrl
+spike: move 1478.4398,376.75146 ctrl
+spike: move 1478.4398,376.75146 ctrl
+spike: move 1468.4398,366.75146 ctrl
+spike: move 1468.4398,366.75146 ctrl
+spike: move 1458.4398,356.75146 ctrl
+spike: move 1458.4398,356.75146 ctrl
+spike: move 1442.4398,340.75146 ctrl
+spike: move 1442.4398,340.75146 ctrl
+spike: move 1428.4398,326.75146 ctrl
+spike: move 1428.4398,326.75146 ctrl
+spike: move 1418.4398,316.75146 ctrl
+spike: move 1418.4398,316.75146 ctrl
+spike: move 1406.4398,300.75146 ctrl
+spike: move 1406.4398,300.75146 ctrl
+spike: move 1396.4398,288.75146 ctrl
+spike: move 1396.4398,288.75146 ctrl
+spike: move 1382.4398,274.75146 ctrl
+spike: move 1382.4398,274.75146 ctrl
+spike: move 1372.4398,262.75146 ctrl
+spike: move 1372.4398,262.75146 ctrl
+spike: move 1362.4398,252.75148 ctrl
+spike: move 1362.4398,252.75148 ctrl
+spike: move 1354.4398,244.75148 ctrl
+spike: move 1354.4398,244.75148 ctrl
+spike: move 1346.4398,236.75148 ctrl
+spike: move 1346.4398,236.75148 ctrl
+spike: move 1338.4398,228.75148 ctrl
+spike: move 1338.4398,228.75148 ctrl
+spike: move 1330.4398,220.75148 ctrl
+spike: move 1330.4398,220.75148 ctrl
+spike: move 1325.0028,217.12685 ctrl
+spike: move 1325.0028,217.12685 ctrl
+spike: move 1323.7434,215.86739 ctrl
+spike: move 1323.7434,215.86739 ctrl
+spike: move 1321.2349,212.10469 ctrl
+spike: move 1321.2349,212.10469 ctrl
+spike: move 1319.9808,210.85056 ctrl
+spike: move 1319.9808,210.85056 ctrl
+spike: move 1316.1915,208.32437 ctrl
+spike: move 1316.1915,208.32437 ctrl
+spike: move 1311.31,203.44292 ctrl
+spike: move 1311.31,203.44292 ctrl
+spike: move 1308.2672,200.40009 ctrl
+spike: move 1308.2672,200.40009 ctrl
+spike: key text='' ctrl=1 shift=1
+spike: key text='' ctrl=1 shift=1
+spike: move 1305.7432,199.13808 ctrl shift
+spike: move 1305.7432,199.13808 ctrl shift
+spike: move 1303.2258,196.62074 ctrl shift
+spike: move 1303.2258,196.62074 ctrl shift
+spike: move 1300.7131,195.3644 ctrl shift
+spike: move 1300.7131,195.3644 ctrl shift
+spike: move 1296.6248,192.63878 ctrl shift
+spike: move 1296.6248,192.63878 ctrl shift
+spike: move 1293.8992,191.27597 ctrl shift
+spike: move 1293.8992,191.27597 ctrl shift
+spike: move 1289.5438,186.92065 ctrl shift
+spike: move 1289.5438,186.92065 ctrl shift
+spike: move 1288.2362,186.92065 ctrl shift
+spike: move 1288.2362,186.92065 ctrl shift
+spike: move 1284.5765,184.48088 ctrl shift
+spike: move 1284.5765,184.48088 ctrl shift
+spike: move 1279.92,181.37657 ctrl shift
+spike: move 1279.92,181.37657 ctrl shift
+spike: move 1276.258,177.71448 ctrl shift
+spike: move 1276.258,177.71448 ctrl shift
+spike: move 1272.9827,176.07683 ctrl shift
+spike: move 1272.9827,176.07683 ctrl shift
+spike: move 1269.0723,174.77336 ctrl shift
+spike: move 1269.0723,174.77336 ctrl shift
+spike: move 1264.5979,171.79045 ctrl shift
+spike: move 1264.5979,171.79045 ctrl shift
+spike: move 1261.7106,168.90309 ctrl shift
+spike: move 1261.7106,168.90309 ctrl shift
+spike: move 1259.1877,167.64166 ctrl shift
+spike: move 1259.1877,167.64166 ctrl shift
+spike: move 1256.6797,165.13364 ctrl shift
+spike: move 1256.6797,165.13364 ctrl shift
+spike: move 1254.2349,165.13364 ctrl shift
+spike: move 1254.2349,165.13364 ctrl shift
+spike: move 1251.7847,162.68344 ctrl shift
+spike: move 1251.7847,162.68344 ctrl shift
+spike: move 1250.6321,161.5308 ctrl shift
+spike: move 1250.6321,161.5308 ctrl shift
+spike: move 1249.6321,161.5308 ctrl shift
+spike: move 1249.6321,161.5308 ctrl shift
+spike: move 1248.6321,160.5308 ctrl shift
+spike: move 1248.6321,160.5308 ctrl shift
+spike: move 1247.6321,160.5308 ctrl shift
+spike: move 1247.6321,160.5308 ctrl shift
+spike: move 1245.6321,158.5308 ctrl shift
+spike: move 1245.6321,158.5308 ctrl shift
+spike: move 1244.6321,158.5308 ctrl shift
+spike: move 1244.6321,158.5308 ctrl shift
+spike: move 1243.8058,158.5308 ctrl shift
+spike: move 1243.8058,158.5308 ctrl shift
+spike: move 1242.2341,158.5308 ctrl shift
+spike: move 1242.2341,158.5308 ctrl shift
+spike: move 1241.2341,159.5308 ctrl shift
+spike: move 1241.2341,159.5308 ctrl shift
+spike: move 1240.2341,160.5308 ctrl shift
+spike: move 1240.2341,160.5308 ctrl shift
+spike: move 1238.0903,161.60268 ctrl shift
+spike: move 1238.0903,161.60268 ctrl shift
+spike: move 1235.7312,162.78226 ctrl shift
+spike: move 1235.7312,162.78226 ctrl shift
+spike: move 1233.2053,165.30814 ctrl shift
+spike: move 1233.2053,165.30814 ctrl shift
+spike: move 1230.53,167.9835 ctrl shift
+spike: move 1230.53,167.9835 ctrl shift
+spike: move 1226.2313,170.84929 ctrl shift
+spike: move 1226.2313,170.84929 ctrl shift
+spike: move 1219.5448,174.19257 ctrl shift
+spike: move 1219.5448,174.19257 ctrl shift
+spike: move 1212.0597,179.80637 ctrl shift
+spike: move 1212.0597,179.80637 ctrl shift
+spike: move 1202.1516,183.76959 ctrl shift
+spike: move 1202.1516,183.76959 ctrl shift
+spike: move 1192.1516,189.76959 ctrl shift
+spike: move 1192.1516,189.76959 ctrl shift
+spike: move 1182.1516,197.76959 ctrl shift
+spike: move 1182.1516,197.76959 ctrl shift
+spike: move 1172.1516,207.76959 ctrl shift
+spike: move 1172.1516,207.76959 ctrl shift
+spike: move 1160.1516,215.76959 ctrl shift
+spike: move 1160.1516,215.76959 ctrl shift
+spike: move 1146.1516,225.76959 ctrl shift
+spike: move 1146.1516,225.76959 ctrl shift
+spike: move 1132.1516,235.76959 ctrl shift
+spike: move 1132.1516,235.76959 ctrl shift
+spike: move 1116.1516,245.76959 ctrl shift
+spike: move 1116.1516,245.76959 ctrl shift
+spike: move 1100.1516,257.7696 ctrl shift
+spike: move 1100.1516,257.7696 ctrl shift
+spike: move 1084.1516,269.7696 ctrl shift
+spike: move 1084.1516,269.7696 ctrl shift
+spike: move 1066.1516,279.7696 ctrl shift
+spike: move 1066.1516,279.7696 ctrl shift
+spike: move 1046.1516,291.7696 ctrl shift
+spike: move 1046.1516,291.7696 ctrl shift
+spike: move 1026.1516,303.7696 ctrl shift
+spike: move 1026.1516,303.7696 ctrl shift
+spike: move 1008.1516,315.7696 ctrl shift
+spike: move 1008.1516,315.7696 ctrl shift
+spike: move 990.1516,327.7696 ctrl shift
+spike: move 990.1516,327.7696 ctrl shift
+spike: move 970.1516,339.7696 ctrl shift
+spike: move 970.1516,339.7696 ctrl shift
+spike: move 950.1516,351.7696 ctrl shift
+spike: move 950.1516,351.7696 ctrl shift
+spike: move 932.1516,363.7696 ctrl shift
+spike: move 932.1516,363.7696 ctrl shift
+spike: move 916.1516,375.7696 ctrl shift
+spike: move 916.1516,375.7696 ctrl shift
+spike: move 900.1516,385.7696 ctrl shift
+spike: move 900.1516,385.7696 ctrl shift
+spike: move 884.1516,397.7696 ctrl shift
+spike: move 884.1516,397.7696 ctrl shift
+spike: move 866.1516,409.7696 ctrl shift
+spike: move 866.1516,409.7696 ctrl shift
+spike: move 850.1516,421.7696 ctrl shift
+spike: move 850.1516,421.7696 ctrl shift
+spike: move 834.1516,431.7696 ctrl shift
+spike: move 834.1516,431.7696 ctrl shift
+spike: move 818.1516,441.7696 ctrl shift
+spike: move 818.1516,441.7696 ctrl shift
+spike: move 804.1516,451.7696 ctrl shift
+spike: move 804.1516,451.7696 ctrl shift
+spike: move 792.1516,461.7696 ctrl shift
+spike: move 792.1516,461.7696 ctrl shift
+spike: move 780.1516,469.7696 ctrl shift
+spike: move 780.1516,469.7696 ctrl shift
+spike: move 754.1516,489.7696 ctrl shift
+spike: move 754.1516,489.7696 ctrl shift
+spike: move 742.1516,497.7696 ctrl shift
+spike: move 742.1516,497.7696 ctrl shift
+spike: move 732.1516,505.7696 ctrl shift
+spike: move 732.1516,505.7696 ctrl shift
+spike: move 702.1516,525.7696 ctrl shift
+spike: move 702.1516,525.7696 ctrl shift
+spike: move 692.1516,533.7696 ctrl shift
+spike: move 692.1516,533.7696 ctrl shift
+spike: move 684.1516,541.7696 ctrl shift
+spike: move 684.1516,541.7696 ctrl shift
+spike: move 662.3897,563.47723 ctrl shift
+spike: move 662.3897,563.47723 ctrl shift
+spike: move 640.0981,578.7365 ctrl shift
+spike: move 640.0981,578.7365 ctrl shift
+spike: move 635.19275,583.64185 ctrl shift
+spike: move 635.19275,583.64185 ctrl shift
+spike: move 611.8751,616.65326 ctrl shift
+spike: move 611.8751,616.65326 ctrl shift
+spike: move 587.5743,646.4317 ctrl shift
+spike: move 587.5743,646.4317 ctrl shift
+spike: move 548.1966,699.6531 ctrl shift
+spike: move 548.1966,699.6531 ctrl shift
+spike: move 510.10516,756.04877 ctrl shift
+spike: move 510.10516,756.04877 ctrl shift
+spike: move 484.8178,796.30975 ctrl shift
+spike: move 484.8178,796.30975 ctrl shift
+spike: move 463.77863,826.668 ctrl shift
+spike: move 463.77863,826.668 ctrl shift
+spike: move 439.64597,863.76904 ctrl shift
+spike: move 439.64597,863.76904 ctrl shift
+spike: move 417.59406,886.3186 ctrl shift
+spike: move 417.59406,886.3186 ctrl shift
+spike: move 412.59406,895.4325 ctrl shift
+spike: move 412.59406,895.4325 ctrl shift
+spike: move 411.59406,903.4325 ctrl shift
+spike: move 411.59406,903.4325 ctrl shift
+spike: move 411.59406,913.5063 ctrl shift
+spike: move 411.59406,913.5063 ctrl shift
+spike: move 411.59406,915.5063 ctrl shift
+spike: move 411.59406,915.5063 ctrl shift
+spike: move 422.36304,920.61005 ctrl shift
+spike: move 422.36304,920.61005 ctrl shift
+spike: move 519.08044,947.2569 ctrl shift
+spike: move 519.08044,947.2569 ctrl shift
+spike: move 619.3987,953.2492 ctrl shift
+spike: move 619.3987,953.2492 ctrl shift
+spike: move 639.37384,952.10443 ctrl shift
+spike: move 639.37384,952.10443 ctrl shift
+spike: move 669.77484,922.8884 ctrl shift
+spike: move 669.77484,922.8884 ctrl shift
+spike: move 724.85565,864.2437 ctrl shift
+spike: move 724.85565,864.2437 ctrl shift
+spike: move 736.3047,850.031 ctrl shift
+spike: move 736.3047,850.031 ctrl shift
+spike: move 737.3047,848.031 ctrl shift
+spike: move 737.3047,848.031 ctrl shift
+spike: move 737.3047,846.031 ctrl shift
+spike: move 737.3047,846.031 ctrl shift
+spike: move 737.3047,844.031 ctrl shift
+spike: move 737.3047,844.031 ctrl shift
+spike: move 739.3047,841.031 ctrl shift
+spike: move 739.3047,841.031 ctrl shift
+spike: move 746.87585,836.4867 ctrl shift
+spike: move 746.87585,836.4867 ctrl shift
+spike: move 748.87585,834.4867 ctrl shift
+spike: move 748.87585,834.4867 ctrl shift
+spike: up 748.87585,834.4867 ctrl shift
+spike: up 748.87585,834.4867 ctrl shift
+spike: key-up text='' ctrl=1 shift=0
+spike: key-up text='' ctrl=1 shift=0
+spike: key-up text='' ctrl=0 shift=0
+spike: key-up text='' ctrl=0 shift=0
+spike: key text='' ctrl=1 shift=0
+spike: key text='' ctrl=1 shift=0
+spike: down 758.82965,822.6287 ctrl
+spike: down 758.82965,822.6287 ctrl
+spike: move 758.82965,819.9162 ctrl
+spike: move 758.82965,819.9162 ctrl
+spike: move 758.82965,817.8805 ctrl
+spike: move 758.82965,817.8805 ctrl
+spike: move 765.8219,807.4274 ctrl
+spike: move 765.8219,807.4274 ctrl
+spike: move 766.994,805.08325 ctrl
+spike: move 766.994,805.08325 ctrl
+spike: move 769.5008,802.5764 ctrl
+spike: move 769.5008,802.5764 ctrl
+spike: move 772.17505,799.90216 ctrl
+spike: move 772.17505,799.90216 ctrl
+spike: move 774.8523,797.225 ctrl
+spike: move 774.8523,797.225 ctrl
+spike: move 777.53143,794.5458 ctrl
+spike: move 777.53143,794.5458 ctrl
+spike: move 780.4243,790.2064 ctrl
+spike: move 780.4243,790.2064 ctrl
+spike: move 781.9147,785.7354 ctrl
+spike: move 781.9147,785.7354 ctrl
+spike: move 783.2147,783.13525 ctrl
+spike: move 783.2147,783.13525 ctrl
+spike: move 785.73224,780.6178 ctrl
+spike: move 785.73224,780.6178 ctrl
+spike: move 788.60803,776.304 ctrl
+spike: move 788.60803,776.304 ctrl
+spike: move 791.69867,771.66815 ctrl
+spike: move 791.69867,771.66815 ctrl
+spike: move 794.81165,766.9986 ctrl
+spike: move 794.81165,766.9986 ctrl
+spike: move 798.66327,761.22125 ctrl
+spike: move 798.66327,761.22125 ctrl
+spike: move 802.51685,755.44086 ctrl
+spike: move 802.51685,755.44086 ctrl
+spike: move 805.62445,750.7794 ctrl
+spike: move 805.62445,750.7794 ctrl
+spike: move 807.11224,746.31604 ctrl
+spike: move 807.11224,746.31604 ctrl
+spike: move 810.0925,741.8456 ctrl
+spike: move 810.0925,741.8456 ctrl
+spike: move 813.21045,737.16876 ctrl
+spike: move 813.21045,737.16876 ctrl
+spike: move 816.3222,732.50116 ctrl
+spike: move 816.3222,732.50116 ctrl
+spike: move 821.54944,725.53143 ctrl
+spike: move 821.54944,725.53143 ctrl
+spike: move 823.2385,720.4643 ctrl
+spike: move 823.2385,720.4643 ctrl
+spike: move 826.44434,714.0526 ctrl
+spike: move 826.44434,714.0526 ctrl
+spike: move 829.43414,709.56793 ctrl
+spike: move 829.43414,709.56793 ctrl
+spike: move 832.7348,706.2673 ctrl
+spike: move 832.7348,706.2673 ctrl
+spike: move 835.73975,701.7598 ctrl
+spike: move 835.73975,701.7598 ctrl
+spike: move 838.0143,699.48535 ctrl
+spike: move 838.0143,699.48535 ctrl
+spike: move 842.6171,694.88245 ctrl
+spike: move 842.6171,694.88245 ctrl
+spike: move 846.10944,687.8979 ctrl
+spike: move 846.10944,687.8979 ctrl
+spike: move 849.2188,684.7885 ctrl
+spike: move 849.2188,684.7885 ctrl
+spike: move 852.10736,680.4557 ctrl
+spike: move 852.10736,680.4557 ctrl
+spike: move 853.7347,673.94635 ctrl
+spike: move 853.7347,673.94635 ctrl
+spike: move 856.9981,669.0512 ctrl
+spike: move 856.9981,669.0512 ctrl
+spike: move 860.3448,662.3579 ctrl
+spike: move 860.3448,662.3579 ctrl
+spike: move 863.91675,655.21387 ctrl
+spike: move 863.91675,655.21387 ctrl
+spike: move 869.18427,649.94635 ctrl
+spike: move 869.18427,649.94635 ctrl
+spike: move 872.4663,645.0233 ctrl
+spike: move 872.4663,645.0233 ctrl
+spike: move 875.8124,638.3312 ctrl
+spike: move 875.8124,638.3312 ctrl
+spike: move 879.1459,633.33093 ctrl
+spike: move 879.1459,633.33093 ctrl
+spike: move 882.2418,628.687 ctrl
+spike: move 882.2418,628.687 ctrl
+spike: move 887.1652,623.76355 ctrl
+spike: move 887.1652,623.76355 ctrl
+spike: move 894.4602,618.29236 ctrl
+spike: move 894.4602,618.29236 ctrl
+spike: move 900.23816,610.5884 ctrl
+spike: move 900.23816,610.5884 ctrl
+spike: move 903.7225,605.36194 ctrl
+spike: move 903.7225,605.36194 ctrl
+spike: move 908.6644,600.42 ctrl
+spike: move 908.6644,600.42 ctrl
+spike: move 914.5362,594.5482 ctrl
+spike: move 914.5362,594.5482 ctrl
+spike: move 918.31116,590.77325 ctrl
+spike: move 918.31116,590.77325 ctrl
+spike: move 922.3055,586.77893 ctrl
+spike: move 922.3055,586.77893 ctrl
+spike: move 929.8642,581.10986 ctrl
+spike: move 929.8642,581.10986 ctrl
+spike: move 939.8642,577.10986 ctrl
+spike: move 939.8642,577.10986 ctrl
+spike: move 947.5146,573.28467 ctrl
+spike: move 947.5146,573.28467 ctrl
+spike: move 952.7886,568.0107 ctrl
+spike: move 952.7886,568.0107 ctrl
+spike: move 959.8188,564.4956 ctrl
+spike: move 959.8188,564.4956 ctrl
+spike: move 964.8211,561.1607 ctrl
+spike: move 964.8211,561.1607 ctrl
+spike: move 969.4762,558.0573 ctrl
+spike: move 969.4762,558.0573 ctrl
+spike: move 974.1383,554.9492 ctrl
+spike: move 974.1383,554.9492 ctrl
+spike: move 979.05475,550.0328 ctrl
+spike: move 979.05475,550.0328 ctrl
+spike: move 986.3786,544.5399 ctrl
+spike: move 986.3786,544.5399 ctrl
+spike: move 994.1131,538.739 ctrl
+spike: move 994.1131,538.739 ctrl
+spike: move 999.60345,533.24866 ctrl
+spike: move 999.60345,533.24866 ctrl
+spike: move 1006.63715,529.7318 ctrl
+spike: move 1006.63715,529.7318 ctrl
+spike: move 1016.38214,523.8848 ctrl
+spike: move 1016.38214,523.8848 ctrl
+spike: move 1024.3275,517.9258 ctrl
+spike: move 1024.3275,517.9258 ctrl
+spike: move 1032.005,512.16766 ctrl
+spike: move 1032.005,512.16766 ctrl
+spike: move 1041.9388,506.20734 ctrl
+spike: move 1041.9388,506.20734 ctrl
+spike: move 1053.9388,500.20734 ctrl
+spike: move 1053.9388,500.20734 ctrl
+spike: move 1063.9388,492.20734 ctrl
+spike: move 1063.9388,492.20734 ctrl
+spike: move 1073.9388,484.20734 ctrl
+spike: move 1073.9388,484.20734 ctrl
+spike: move 1083.9388,478.20734 ctrl
+spike: move 1083.9388,478.20734 ctrl
+spike: move 1101.8955,466.23984 ctrl
+spike: move 1101.8955,466.23984 ctrl
+spike: move 1111.8414,460.27234 ctrl
+spike: move 1111.8414,460.27234 ctrl
+spike: key-up text='' ctrl=0 shift=0
+spike: key-up text='' ctrl=0 shift=0
+spike: move 1121.8414,452.27234
+spike: move 1121.8414,452.27234
+spike: move 1149.6384,438.3738
+spike: move 1149.6384,438.3738
+spike: move 1156.7942,434.79596
+spike: move 1156.7942,434.79596
+spike: move 1173.8594,422.97623
+spike: move 1173.8594,422.97623
+spike: move 1176.924,419.91156
+spike: move 1176.924,419.91156
+spike: move 1193.9368,414.24066
+spike: move 1193.9368,414.24066
+spike: move 1212.0026,403.62686
+spike: move 1212.0026,403.62686
+spike: move 1228.819,392.53867
+spike: move 1228.819,392.53867
+spike: move 1238.5763,386.34683
+spike: move 1238.5763,386.34683
+spike: move 1250.6676,386.34683
+spike: move 1250.6676,386.34683
+spike: move 1253.6676,385.34683
+spike: move 1253.6676,385.34683
+spike: key text='' ctrl=0 shift=1
+spike: key text='' ctrl=0 shift=1
+spike: move 1255.5776,384.39178 shift
+spike: move 1255.5776,384.39178 shift
+spike: move 1257.1954,384.39178 shift
+spike: move 1257.1954,384.39178 shift
+spike: move 1258.1766,383.41052 shift
+spike: move 1258.1766,383.41052 shift
+spike: move 1258.1766,384.3093 shift
+spike: move 1258.1766,384.3093 shift
+spike: move 1258.1766,384.9681 shift
+spike: move 1258.1766,384.9681 shift
+spike: move 1258.1766,394.52167 shift
+spike: move 1258.1766,394.52167 shift
+spike: move 1258.1766,432.32477 shift
+spike: move 1258.1766,432.32477 shift
+spike: move 1258.1766,500.32477 shift
+spike: move 1258.1766,500.32477 shift
+spike: move 1262.1766,582.32477 shift
+spike: move 1262.1766,582.32477 shift
+spike: move 1264.1766,642.32477 shift
+spike: move 1264.1766,642.32477 shift
+spike: move 1266.1766,658.32477 shift
+spike: move 1266.1766,658.32477 shift
+spike: move 1274.1766,686.32477 shift
+spike: move 1274.1766,686.32477 shift
+spike: move 1280.1766,704.32477 shift
+spike: move 1280.1766,704.32477 shift
+spike: move 1282.1766,720.32477 shift
+spike: move 1282.1766,720.32477 shift
+spike: move 1284.1766,734.32477 shift
+spike: move 1284.1766,734.32477 shift
+spike: move 1290.1766,750.32477 shift
+spike: move 1290.1766,750.32477 shift
+spike: move 1294.1766,766.32477 shift
+spike: move 1294.1766,766.32477 shift
+spike: move 1302.1766,782.32477 shift
+spike: move 1302.1766,782.32477 shift
+spike: move 1306.1766,796.32477 shift
+spike: move 1306.1766,796.32477 shift
+spike: move 1310.1766,806.32477 shift
+spike: move 1310.1766,806.32477 shift
+spike: move 1312.1766,818.32477 shift
+spike: move 1312.1766,818.32477 shift
+spike: move 1316.1766,828.32477 shift
+spike: move 1316.1766,828.32477 shift
+spike: move 1319.566,835.10345 shift
+spike: move 1319.566,835.10345 shift
+spike: move 1320.8867,841.70715 shift
+spike: move 1320.8867,841.70715 shift
+spike: move 1322.3678,847.63153 shift
+spike: move 1322.3678,847.63153 shift
+spike: move 1326.6227,851.8864 shift
+spike: move 1326.6227,851.8864 shift
+spike: move 1329.0868,854.3505 shift
+spike: move 1329.0868,854.3505 shift
+spike: move 1331.3729,856.63666 shift
+spike: move 1331.3729,856.63666 shift
+spike: key-up text='' ctrl=0 shift=0
+spike: key-up text='' ctrl=0 shift=0
+spike: move 1332.3729,859.63666
+spike: move 1332.3729,859.63666
+spike: up 1332.3729,859.63666
+spike: up 1332.3729,859.63666
+spike: key text='' ctrl=1 shift=0
+spike: key text='' ctrl=1 shift=0
+spike: key-up text='' ctrl=0 shift=0
+spike: key-up text='' ctrl=0 shift=0
+spike: quit
+spike: quit
+spike: key text='' ctrl=0 shift=0spike: key text='' ctrl=0 shift=0
+
+spike: key-up text='' ctrl=0 shift=0
+spike: key-up text='' ctrl=0 shift=0
